@@ -11,4 +11,5 @@ uploads/*
 !uploads/.gitkeep
 *.csv
 config.enc
+.config_key
 .DS_Store
