@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stock Photos Uploader</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Stock Photos Uploader</h1>
+    <div class="header-actions">
+      <span id="statusText" style="font-size:0.8rem;color:var(--text-muted)"></span>
+    </div>
+  </header>
+
+  <div class="tab-bar">
+    <button class="tab active" data-tab="photos">Photos</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </div>
+
+  <main>
+    <!-- Photos Panel -->
+    <div id="photosPanel" class="panel active">
+      <div class="drop-zone" id="dropZone">
+        <h3>Drop photos here or click to browse</h3>
+        <p>Supports JPEG, PNG, TIFF</p>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.tiff,.tif" hidden>
+      </div>
+
+      <div class="batch-bar" id="batchBar" style="display:none">
+        <span class="count" id="photoCount">0 photos</span>
+        <button class="btn btn-primary" id="btnAnalyzeAll">Analyze All with AI</button>
+        <button class="btn btn-outline" id="btnEmbedAll">Embed Metadata</button>
+        <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
+        <button class="btn btn-outline btn-sm" id="btnCsvAdobe">CSV Adobe</button>
+        <button class="btn btn-outline btn-sm" id="btnCsvShutter">CSV Shutterstock</button>
+        <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
+        <button class="btn btn-success btn-sm" id="btnUploadAdobe">Upload Adobe</button>
+        <button class="btn btn-success btn-sm" id="btnUploadShutter">Upload Shutterstock</button>
+        <button class="btn btn-success btn-sm" id="btnUploadBoth">Upload Both</button>
+        <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
+        <button class="btn btn-danger btn-sm" id="btnClearAll">Clear All</button>
+      </div>
+
+      <div id="progressArea" style="display:none;margin-bottom:1rem">
+        <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:0.25rem">
+          <span id="progressLabel">Analyzing...</span>
+          <span id="progressCount">0/0</span>
+        </div>
+        <div class="progress-bar"><div class="fill" id="progressFill" style="width:0"></div></div>
+      </div>
+
+      <div class="photo-grid" id="photoGrid"></div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div id="settingsPanel" class="panel">
+      <div class="settings-grid">
+        <div class="settings-section">
+          <h3>OpenAI API Key</h3>
+          <div class="field-group">
+            <label>API Key</label>
+            <input type="password" id="settOpenaiKey" placeholder="sk-...">
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3>Adobe Stock (SFTP)</h3>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">
+            Get credentials from Adobe Stock Contributor Portal: Upload &gt; SFTP &gt; Generate Password
+          </p>
+          <div class="field-group">
+            <label>Host</label>
+            <input type="text" id="settAdobeHost" value="sftp.contributor.adobestock.com">
+          </div>
+          <div class="field-group">
+            <label>Username</label>
+            <input type="text" id="settAdobeUser" placeholder="Your SFTP username">
+          </div>
+          <div class="field-group">
+            <label>Password</label>
+            <input type="password" id="settAdobePass" placeholder="Your SFTP password">
+          </div>
+          <button class="btn btn-outline btn-sm" id="btnTestAdobe">Test Connection</button>
+        </div>
+
+        <div class="settings-section">
+          <h3>Shutterstock (FTPS)</h3>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem">
+            Get credentials from Shutterstock Contributor Portal FTPS settings
+          </p>
+          <div class="field-group">
+            <label>Host</label>
+            <input type="text" id="settShutterHost" value="ftps.shutterstock.com">
+          </div>
+          <div class="field-group">
+            <label>Username</label>
+            <input type="text" id="settShutterUser" placeholder="Your FTPS username">
+          </div>
+          <div class="field-group">
+            <label>Password</label>
+            <input type="password" id="settShutterPass" placeholder="Your FTPS password">
+          </div>
+          <button class="btn btn-outline btn-sm" id="btnTestShutter">Test Connection</button>
+        </div>
+
+        <button class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- Detail Side Panel -->
+  <div class="detail-overlay" id="detailOverlay">
+    <div class="detail-backdrop" id="detailBackdrop"></div>
+    <div class="detail-panel">
+      <button class="close-btn" id="detailClose">&times;</button>
+      <img class="preview-img" id="detailImg" src="" alt="">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <span style="font-size:0.8rem;color:var(--text-muted)" id="detailFilename"></span>
+        <span class="status-badge" id="detailStatus"></span>
+      </div>
+
+      <div class="field-group">
+        <label>Title <span style="font-weight:normal;color:var(--text-muted)">(max 70 chars)</span></label>
+        <input type="text" id="detailTitle" maxlength="70">
+      </div>
+
+      <div class="field-group">
+        <label>Description <span style="font-weight:normal;color:var(--text-muted)">(max 200 chars)</span></label>
+        <textarea id="detailDesc" maxlength="200" rows="3"></textarea>
+      </div>
+
+      <div class="field-group">
+        <label>Keywords <span style="font-weight:normal;color:var(--text-muted)">(press Enter to add)</span></label>
+        <input type="text" id="detailKwInput" placeholder="Add a keyword...">
+        <div class="keywords-display" id="detailKeywords"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div class="field-group">
+          <label>Adobe Category</label>
+          <select id="detailAdobeCat"></select>
+        </div>
+        <div class="field-group">
+          <label>Shutterstock Cat. 1</label>
+          <select id="detailSSCat1"></select>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div class="field-group">
+          <label>Shutterstock Cat. 2</label>
+          <select id="detailSSCat2"></select>
+        </div>
+        <div class="field-group" style="display:flex;flex-direction:column;justify-content:flex-end">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer">
+            <input type="checkbox" id="detailEditorial"> Editorial
+          </label>
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;margin-top:0.25rem">
+            <input type="checkbox" id="detailMature"> Mature Content
+          </label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:0.5rem;margin-top:1rem">
+        <button class="btn btn-primary" id="btnDetailSave">Save Changes</button>
+        <button class="btn btn-outline" id="btnDetailAnalyze">Re-analyze</button>
+        <button class="btn btn-outline" id="btnDetailEmbed">Embed</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
