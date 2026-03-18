@@ -28,6 +28,39 @@
         <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.tiff,.tif" hidden>
       </div>
 
+      <div class="batch-settings" id="batchSettings" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div class="field-group">
+            <label>Location <span style="font-weight:normal;color:var(--text-muted)">(applied to all photos)</span></label>
+            <input type="text" id="batchLocation" placeholder="e.g. Santorini, Greece">
+          </div>
+          <div class="field-group">
+            <label>Common Keywords <span style="font-weight:normal;color:var(--text-muted)">(comma-separated)</span></label>
+            <input type="text" id="batchKeywords" placeholder="e.g. travel, summer, Mediterranean">
+          </div>
+        </div>
+        <div class="field-group" style="margin-top:0.5rem">
+          <label>Photo Style <span style="font-weight:normal;color:var(--text-muted)">(helps AI generate better metadata)</span></label>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.25rem">
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.85rem">
+              <input type="checkbox" class="style-check" value="Travel" checked> Travel
+            </label>
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.85rem">
+              <input type="checkbox" class="style-check" value="Landscape" checked> Landscape
+            </label>
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.85rem">
+              <input type="checkbox" class="style-check" value="Nature" checked> Nature
+            </label>
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.85rem">
+              <input type="checkbox" class="style-check" value="Sunsets/Sunrises" checked> Sunsets/Sunrises
+            </label>
+            <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;font-size:0.85rem">
+              <input type="checkbox" id="styleOther" class="style-check" value="Other"> Other
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div class="batch-bar" id="batchBar" style="display:none">
         <span class="count" id="photoCount">0 photos</span>
         <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>

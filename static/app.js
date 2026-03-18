@@ -24,11 +24,39 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initDropZone();
   initBatchActions();
+  initBatchSettings();
   initDetail();
   populateCategorySelects();
   loadPhotos();
   loadSettings();
 });
+
+// ─── Batch Context ───
+function initBatchSettings() {
+  const otherCb = document.getElementById('styleOther');
+  const defaultChecks = document.querySelectorAll('.style-check:not(#styleOther)');
+
+  otherCb.addEventListener('change', () => {
+    if (otherCb.checked) {
+      defaultChecks.forEach(cb => { cb.checked = false; });
+    }
+  });
+  defaultChecks.forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) otherCb.checked = false;
+    });
+  });
+}
+
+function getBatchContext() {
+  const location = document.getElementById('batchLocation').value.trim();
+  const kwRaw = document.getElementById('batchKeywords').value.trim();
+  const common_keywords = kwRaw ? kwRaw.split(',').map(k => k.trim()).filter(Boolean) : [];
+  const photo_styles = Array.from(document.querySelectorAll('.style-check:checked'))
+    .map(cb => cb.value)
+    .filter(v => v !== 'Other');
+  return { location, common_keywords, photo_styles };
+}
 
 // ─── Tabs ───
 function initTabs() {
@@ -85,9 +113,11 @@ async function loadPhotos() {
 function renderGrid() {
   const grid = document.getElementById('photoGrid');
   const bar = document.getElementById('batchBar');
+  const batchSettings = document.getElementById('batchSettings');
   const count = document.getElementById('photoCount');
 
   bar.style.display = photos.length ? 'flex' : 'none';
+  batchSettings.style.display = photos.length ? 'block' : 'none';
   count.textContent = photos.length + ' photo(s)';
 
   const readyCount = photos.filter(p => p.status === 'ready').length;
@@ -127,9 +157,14 @@ async function analyzeAll() {
   const btn = document.getElementById('btnAnalyzeAll');
   btn.disabled = true;
 
+  const context = getBatchContext();
   let done = 0;
   for (const p of pending) {
-    const res = await api(`/api/metadata/analyze/${p.id}`, { method: 'POST' });
+    const res = await api(`/api/metadata/analyze/${p.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(context)
+    });
     done++;
     updateProgress(done, pending.length);
     if (res.success && res.data) {
@@ -146,7 +181,13 @@ async function analyzeAll() {
 }
 
 async function embedAll() {
+  const btn = document.getElementById('btnEmbedAll');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Embedding...';
   const res = await api('/api/metadata/embed-batch', { method: 'POST' });
+  btn.disabled = false;
+  btn.textContent = origText;
   toast(res.message || 'Done', res.success ? 'success' : 'error');
 }
 
@@ -160,12 +201,17 @@ async function uploadPlatform(platform) {
   if (!ready.length) { toast('No ready photos to upload', 'info'); return; }
 
   const ids = ready.map(p => p.id);
+  const platformLabel = platform === 'both' ? 'both platforms' : platform === 'adobe' ? 'Adobe Stock' : 'Shutterstock';
+
+  const btns = ['btnUploadAdobe', 'btnUploadShutter', 'btnUploadBoth'];
+  btns.forEach(id => { document.getElementById(id).disabled = true; });
+
+  showProgress(`Uploading ${ready.length} photo(s) to ${platformLabel}...`, 0, 1);
+
   let endpoint = '/api/upload/';
   if (platform === 'adobe') endpoint += 'adobe';
   else if (platform === 'shutterstock') endpoint += 'shutterstock';
   else endpoint += 'both';
-
-  toast(`Uploading ${ready.length} photo(s) to ${platform}...`, 'info');
 
   const res = await api(endpoint, {
     method: 'POST',
@@ -173,6 +219,9 @@ async function uploadPlatform(platform) {
     body: JSON.stringify({ photo_ids: ids, platform: platform === 'both' ? 'both' : platform === 'adobe' ? 'adobe_stock' : 'shutterstock' })
   });
 
+  updateProgress(1, 1);
+  hideProgress();
+  btns.forEach(id => { document.getElementById(id).disabled = false; });
   toast(res.message || 'Upload complete', res.success ? 'success' : 'error');
   loadPhotos();
 }
@@ -300,7 +349,12 @@ async function saveDetail() {
 async function reanalyzeDetail() {
   if (!selectedPhotoId) return;
   toast('Analyzing...', 'info');
-  const res = await api(`/api/metadata/analyze/${selectedPhotoId}`, { method: 'POST' });
+  const context = getBatchContext();
+  const res = await api(`/api/metadata/analyze/${selectedPhotoId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(context)
+  });
   if (res.success && res.data) {
     const idx = photos.findIndex(x => x.id === selectedPhotoId);
     if (idx >= 0) photos[idx] = res.data;

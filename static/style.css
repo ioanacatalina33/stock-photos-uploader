@@ -76,6 +76,15 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
 .panel { display: none; }
 .panel.active { display: block; }
 
+/* Batch settings */
+.batch-settings {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
 /* Drop zone */
 .drop-zone {
   border: 2px dashed var(--border);

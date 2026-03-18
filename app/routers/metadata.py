@@ -5,9 +5,12 @@ import logging
 
 from fastapi import APIRouter
 
+from fastapi import Body
+
 from app.config import load_settings
 from app.models.schemas import (
     APIResponse,
+    BatchContext,
     MetadataUpdateRequest,
     ProcessingStatus,
 )
@@ -21,7 +24,10 @@ router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
 @router.post("/analyze/{photo_id}")
-async def analyze_single(photo_id: str) -> APIResponse:
+async def analyze_single(
+    photo_id: str,
+    context: BatchContext | None = Body(None),
+) -> APIResponse:
     """Analyze a single photo with AI and generate metadata."""
     item = photo_store.get(photo_id)
     if not item:
@@ -33,7 +39,9 @@ async def analyze_single(photo_id: str) -> APIResponse:
 
     item.status = ProcessingStatus.ANALYZING
     try:
-        metadata = await analyze_photo(item.filepath, settings.openai_api_key)
+        metadata = await analyze_photo(
+            item.filepath, settings.openai_api_key, context
+        )
         item.metadata = metadata
         item.status = ProcessingStatus.READY
         return APIResponse(
@@ -49,7 +57,10 @@ async def analyze_single(photo_id: str) -> APIResponse:
 
 
 @router.post("/analyze-batch")
-async def analyze_batch(photo_ids: list[str] | None = None) -> APIResponse:
+async def analyze_batch(
+    photo_ids: list[str] | None = None,
+    context: BatchContext | None = None,
+) -> APIResponse:
     """Analyze multiple photos. If no IDs given, analyze all pending photos."""
     settings = load_settings()
     if not settings.openai_api_key:
@@ -59,7 +70,7 @@ async def analyze_batch(photo_ids: list[str] | None = None) -> APIResponse:
         photo_ids = [
             pid
             for pid, p in photo_store.items()
-            if p.status == ProcessingStatus.PENDING
+            if p.status in (ProcessingStatus.PENDING, ProcessingStatus.ERROR)
         ]
 
     if not photo_ids:
@@ -78,7 +89,9 @@ async def analyze_batch(photo_ids: list[str] | None = None) -> APIResponse:
         if not item:
             continue
         try:
-            metadata = await analyze_photo(item.filepath, settings.openai_api_key)
+            metadata = await analyze_photo(
+                item.filepath, settings.openai_api_key, context
+            )
             item.metadata = metadata
             item.status = ProcessingStatus.READY
             results.append({"id": pid, "status": "ready"})

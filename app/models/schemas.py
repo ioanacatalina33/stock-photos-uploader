@@ -61,6 +61,14 @@ class AppSettings(BaseModel):
     shutterstock: PlatformCredentials | None = None
 
 
+class BatchContext(BaseModel):
+    location: str = ""
+    common_keywords: list[str] = Field(default_factory=list)
+    photo_styles: list[str] = Field(
+        default_factory=lambda: ["Travel", "Landscape", "Nature", "Sunsets/Sunrises"]
+    )
+
+
 class MetadataUpdateRequest(BaseModel):
     title: str | None = None
     description: str | None = None
