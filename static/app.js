@@ -34,16 +34,23 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── Batch Context ───
 function initBatchSettings() {
   const otherCb = document.getElementById('styleOther');
+  const otherInput = document.getElementById('styleOtherInput');
   const defaultChecks = document.querySelectorAll('.style-check:not(#styleOther)');
 
   otherCb.addEventListener('change', () => {
     if (otherCb.checked) {
       defaultChecks.forEach(cb => { cb.checked = false; });
+      otherInput.style.display = 'block';
+    } else {
+      otherInput.style.display = 'none';
     }
   });
   defaultChecks.forEach(cb => {
     cb.addEventListener('change', () => {
-      if (cb.checked) otherCb.checked = false;
+      if (cb.checked) {
+        otherCb.checked = false;
+        otherInput.style.display = 'none';
+      }
     });
   });
 }
@@ -52,9 +59,17 @@ function getBatchContext() {
   const location = document.getElementById('batchLocation').value.trim();
   const kwRaw = document.getElementById('batchKeywords').value.trim();
   const common_keywords = kwRaw ? kwRaw.split(',').map(k => k.trim()).filter(Boolean) : [];
-  const photo_styles = Array.from(document.querySelectorAll('.style-check:checked'))
-    .map(cb => cb.value)
-    .filter(v => v !== 'Other');
+
+  const checkedStyles = Array.from(document.querySelectorAll('.style-check:checked')).map(cb => cb.value);
+  const photo_styles = checkedStyles.filter(v => v !== 'Other');
+
+  if (checkedStyles.includes('Other')) {
+    const otherVal = document.getElementById('styleOtherInput').value.trim();
+    if (otherVal) {
+      otherVal.split(',').map(s => s.trim()).filter(Boolean).forEach(s => photo_styles.push(s));
+    }
+  }
+
   return { location, common_keywords, photo_styles };
 }
 
