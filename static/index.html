@@ -30,17 +30,17 @@
 
       <div class="batch-bar" id="batchBar" style="display:none">
         <span class="count" id="photoCount">0 photos</span>
-        <button class="btn btn-primary" id="btnAnalyzeAll" title="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>
-        <button class="btn btn-outline" id="btnEmbedAll" title="Write the generated metadata (title, description, keywords) directly into image files as IPTC/XMP data so stock platforms auto-detect it">Embed Metadata</button>
+        <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>
+        <button class="btn btn-outline" id="btnEmbedAll" data-tip="Write the generated metadata (title, description, keywords) directly into image files as IPTC/XMP data so stock platforms auto-detect it">Embed Metadata</button>
         <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
-        <button class="btn btn-outline btn-sm" id="btnCsvAdobe" title="Download a CSV file formatted for Adobe Stock with filenames, titles, keywords, and category numbers">CSV Adobe</button>
-        <button class="btn btn-outline btn-sm" id="btnCsvShutter" title="Download a CSV file formatted for Shutterstock with filenames, descriptions, keywords, and category names">CSV Shutterstock</button>
+        <button class="btn btn-outline btn-sm" id="btnCsvAdobe" data-tip="Download a CSV file formatted for Adobe Stock with filenames, titles, keywords, and category numbers">CSV Adobe</button>
+        <button class="btn btn-outline btn-sm" id="btnCsvShutter" data-tip="Download a CSV file formatted for Shutterstock with filenames, descriptions, keywords, and category names">CSV Shutterstock</button>
         <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
-        <button class="btn btn-success btn-sm" id="btnUploadAdobe" title="Upload all ready photos and their CSV metadata to Adobe Stock via SFTP">Upload Adobe</button>
-        <button class="btn btn-success btn-sm" id="btnUploadShutter" title="Upload all ready photos and their CSV metadata to Shutterstock via FTPS">Upload Shutterstock</button>
-        <button class="btn btn-success btn-sm" id="btnUploadBoth" title="Upload all ready photos and CSV metadata to both Adobe Stock and Shutterstock at once">Upload Both</button>
+        <button class="btn btn-success btn-sm" id="btnUploadAdobe" data-tip="Upload all ready photos and their CSV metadata to Adobe Stock via SFTP">Upload Adobe</button>
+        <button class="btn btn-success btn-sm" id="btnUploadShutter" data-tip="Upload all ready photos and their CSV metadata to Shutterstock via FTPS">Upload Shutterstock</button>
+        <button class="btn btn-success btn-sm" id="btnUploadBoth" data-tip="Upload all ready photos and CSV metadata to both Adobe Stock and Shutterstock at once">Upload Both</button>
         <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
-        <button class="btn btn-danger btn-sm" id="btnClearAll" title="Delete all uploaded photos and their metadata from the app">Clear All</button>
+        <button class="btn btn-danger btn-sm" id="btnClearAll" data-tip="Delete all uploaded photos and their metadata from the app">Clear All</button>
       </div>
 
       <div id="progressArea" style="display:none;margin-bottom:1rem">
@@ -82,7 +82,7 @@
             <label>Password</label>
             <input type="password" id="settAdobePass" placeholder="Your SFTP password">
           </div>
-          <button class="btn btn-outline btn-sm" id="btnTestAdobe" title="Verify that the SFTP connection to Adobe Stock works with the saved credentials">Test Connection</button>
+          <button class="btn btn-outline btn-sm" id="btnTestAdobe" data-tip="Verify that the SFTP connection to Adobe Stock works with the saved credentials">Test Connection</button>
         </div>
 
         <div class="settings-section">
@@ -102,10 +102,10 @@
             <label>Password</label>
             <input type="password" id="settShutterPass" placeholder="Your FTPS password">
           </div>
-          <button class="btn btn-outline btn-sm" id="btnTestShutter" title="Verify that the FTPS connection to Shutterstock works with the saved credentials">Test Connection</button>
+          <button class="btn btn-outline btn-sm" id="btnTestShutter" data-tip="Verify that the FTPS connection to Shutterstock works with the saved credentials">Test Connection</button>
         </div>
 
-        <button class="btn btn-primary" id="btnSaveSettings" title="Save all settings (API key and platform credentials) to encrypted local storage">Save Settings</button>
+        <button class="btn btn-primary" id="btnSaveSettings" data-tip="Save all settings (API key and platform credentials) to encrypted local storage">Save Settings</button>
       </div>
     </div>
   </main>
@@ -164,9 +164,9 @@
       </div>
 
       <div style="display:flex;gap:0.5rem;margin-top:1rem">
-        <button class="btn btn-primary" id="btnDetailSave" title="Save your edits to the title, description, keywords, and categories for this photo">Save Changes</button>
-        <button class="btn btn-outline" id="btnDetailAnalyze" title="Run AI analysis again on this photo to regenerate all metadata from scratch">Re-analyze</button>
-        <button class="btn btn-outline" id="btnDetailEmbed" title="Write the current metadata into the image file as IPTC/XMP data">Embed</button>
+        <button class="btn btn-primary" id="btnDetailSave" data-tip="Save your edits to the title, description, keywords, and categories for this photo">Save Changes</button>
+        <button class="btn btn-outline" id="btnDetailAnalyze" data-tip="Run AI analysis again on this photo to regenerate all metadata from scratch">Re-analyze</button>
+        <button class="btn btn-outline" id="btnDetailEmbed" data-tip="Write the current metadata into the image file as IPTC/XMP data">Embed</button>
       </div>
     </div>
   </div>
