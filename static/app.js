@@ -293,7 +293,6 @@ function openDetail(id) {
   document.getElementById('detailSSCat1').value = p.metadata.shutterstock_category_1 || '';
   document.getElementById('detailSSCat2').value = p.metadata.shutterstock_category_2 || '';
   document.getElementById('detailEditorial').checked = p.metadata.editorial;
-  document.getElementById('detailMature').checked = p.metadata.mature_content;
 
   renderKeywords(p.metadata.keywords || []);
   document.getElementById('detailOverlay').classList.add('open');
@@ -341,8 +340,7 @@ async function saveDetail() {
     adobe_category: parseInt(document.getElementById('detailAdobeCat').value) || null,
     shutterstock_category_1: document.getElementById('detailSSCat1').value,
     shutterstock_category_2: document.getElementById('detailSSCat2').value,
-    editorial: document.getElementById('detailEditorial').checked,
-    mature_content: document.getElementById('detailMature').checked
+    editorial: document.getElementById('detailEditorial').checked
   };
 
   const res = await api(`/api/metadata/${selectedPhotoId}`, {
