@@ -156,17 +156,40 @@ async def upload_shutterstock(request: UploadRequest) -> APIResponse:
 @router.post("/both")
 async def upload_both(request: UploadRequest) -> APIResponse:
     """Upload to both Adobe Stock and Shutterstock."""
-    results = {"adobe_stock": None, "shutterstock": None}
+    settings = load_settings()
+    photos = _get_ready_photos(request.photo_ids)
+    if not photos:
+        return APIResponse(success=False, message="No ready photos to upload")
 
-    adobe_req = UploadRequest(
-        photo_ids=request.photo_ids, platform="adobe_stock"
-    )
-    results["adobe_stock"] = (await upload_adobe(adobe_req)).model_dump()
+    filepaths = [p.filepath for p in photos]
+    results = {"adobe_stock": [], "shutterstock": []}
 
-    ss_req = UploadRequest(
-        photo_ids=request.photo_ids, platform="shutterstock"
-    )
-    results["shutterstock"] = (await upload_shutterstock(ss_req)).model_dump()
+    if settings.adobe_stock:
+        csv_content = generate_adobe_csv(photos)
+        csv_path = Path(tempfile.mktemp(suffix=".csv"))
+        save_csv(csv_content, str(csv_path))
+        async for progress in upload_to_adobe(
+            filepaths, str(csv_path), settings.adobe_stock
+        ):
+            results["adobe_stock"].append(progress.model_dump())
+        csv_path.unlink(missing_ok=True)
+    else:
+        results["adobe_stock"] = [{"status": "error", "message": "Credentials not configured"}]
+
+    if settings.shutterstock:
+        csv_content = generate_shutterstock_csv(photos)
+        csv_path = Path(tempfile.mktemp(suffix=".csv"))
+        save_csv(csv_content, str(csv_path))
+        async for progress in upload_to_shutterstock(
+            filepaths, str(csv_path), settings.shutterstock
+        ):
+            results["shutterstock"].append(progress.model_dump())
+        csv_path.unlink(missing_ok=True)
+    else:
+        results["shutterstock"] = [{"status": "error", "message": "Credentials not configured"}]
+
+    for p in photos:
+        p.status = ProcessingStatus.UPLOADED
 
     return APIResponse(success=True, message="Upload to both complete", data=results)
 
