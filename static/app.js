@@ -212,6 +212,7 @@ function downloadCSV(platform) {
 }
 
 async function uploadPlatform(platform) {
+  hideProgress();
   const ready = photos.filter(p => p.status === 'ready');
   if (!ready.length) { toast('No ready photos to upload', 'info'); return; }
 

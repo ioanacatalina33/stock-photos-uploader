@@ -69,9 +69,11 @@ async def update_settings(
 
 
 def _mask(value: str) -> str:
-    if not value or len(value) < 8:
-        return "***" if value else ""
-    return value[:4] + "****" + value[-4:]
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return "****"
+    return value[:2] + "*" * (len(value) - 2)
 
 
 def _mask_creds(creds: PlatformCredentials | None) -> dict | None:
