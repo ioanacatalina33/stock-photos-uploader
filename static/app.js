@@ -216,12 +216,13 @@ async function uploadPlatform(platform) {
   if (!ready.length) { toast('No ready photos to upload', 'info'); return; }
 
   const ids = ready.map(p => p.id);
-  const platformLabel = platform === 'both' ? 'both platforms' : platform === 'adobe' ? 'Adobe Stock' : 'Shutterstock';
+  const btnMap = { adobe: 'btnUploadAdobe', shutterstock: 'btnUploadShutter', both: 'btnUploadBoth' };
+  const allBtns = ['btnUploadAdobe', 'btnUploadShutter', 'btnUploadBoth'];
+  const activeBtn = document.getElementById(btnMap[platform]);
+  const origText = activeBtn.textContent;
 
-  const btns = ['btnUploadAdobe', 'btnUploadShutter', 'btnUploadBoth'];
-  btns.forEach(id => { document.getElementById(id).disabled = true; });
-
-  showProgress(`Uploading ${ready.length} photo(s) to ${platformLabel}...`, 0, 1);
+  allBtns.forEach(id => { document.getElementById(id).disabled = true; });
+  activeBtn.innerHTML = '<span class="spinner"></span> Uploading...';
 
   let endpoint = '/api/upload/';
   if (platform === 'adobe') endpoint += 'adobe';
@@ -234,9 +235,8 @@ async function uploadPlatform(platform) {
     body: JSON.stringify({ photo_ids: ids, platform: platform === 'both' ? 'both' : platform === 'adobe' ? 'adobe_stock' : 'shutterstock' })
   });
 
-  updateProgress(1, 1);
-  hideProgress();
-  btns.forEach(id => { document.getElementById(id).disabled = false; });
+  allBtns.forEach(id => { document.getElementById(id).disabled = false; });
+  activeBtn.textContent = origText;
   toast(res.message || 'Upload complete', res.success ? 'success' : 'error');
   loadPhotos();
 }

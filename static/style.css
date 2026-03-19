@@ -394,6 +394,22 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
   transition: width 0.3s;
 }
 
+/* Button spinner */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Custom tooltips */
 [data-tip] {
   position: relative;
