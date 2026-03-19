@@ -14,6 +14,33 @@ SHUTTERSTOCK_FTPS_HOST = "ftps.shutterstock.com"
 SHUTTERSTOCK_FTPS_PORT = 21
 
 
+class _ReusedSslSocket(ssl.SSLSocket):
+    """Workaround for Python ftplib FTPS data-channel session reuse.
+
+    Some FTPS servers (including Shutterstock) require TLS session reuse
+    on the data channel. Python's FTP_TLS doesn't handle this by default,
+    causing uploads to fail silently. This subclass patches unwrap() to
+    keep the session alive.
+    """
+
+    def unwrap(self):
+        return self._sslobj
+
+
+class _SessionReuseFTPS(ftplib.FTP_TLS):
+    """FTP_TLS subclass that reuses TLS sessions for data connections."""
+
+    def ntransfercmd(self, cmd, rest=None):
+        conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        if self._prot_p:
+            conn = self.context.wrap_socket(
+                conn,
+                server_hostname=self.host,
+                session=self.sock.session,
+            )
+        return conn, size
+
+
 def _connect_ftps(credentials: PlatformCredentials) -> ftplib.FTP_TLS:
     """Create an explicit FTPS connection to Shutterstock."""
     host = credentials.host or SHUTTERSTOCK_FTPS_HOST
@@ -21,10 +48,12 @@ def _connect_ftps(credentials: PlatformCredentials) -> ftplib.FTP_TLS:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
 
-    ftp = ftplib.FTP_TLS(context=ctx)
+    ftp = _SessionReuseFTPS(context=ctx)
     ftp.connect(host, SHUTTERSTOCK_FTPS_PORT, timeout=30)
     ftp.login(credentials.username, credentials.password)
     ftp.prot_p()
+    ftp.set_pasv(True)
+    logger.info("FTPS connected to %s as %s", host, credentials.username)
     return ftp
 
 
