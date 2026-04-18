@@ -27,10 +27,73 @@ document.addEventListener('DOMContentLoaded', () => {
   initBatchActions();
   initBatchSettings();
   initDetail();
+  initTooltips();
   populateCategorySelects();
   loadPhotos();
   loadSettings();
 });
+
+// ─── Tooltips (fixed-position, never clipped by overflow containers) ───
+function initTooltips() {
+  const tip = document.createElement('div');
+  tip.className = 'js-tooltip';
+  document.body.appendChild(tip);
+
+  let currentTarget = null;
+
+  function show(target) {
+    const text = target.getAttribute('data-tip');
+    if (!text) return;
+    tip.textContent = text;
+    tip.classList.add('visible');
+    position(target);
+  }
+
+  function position(target) {
+    const r = target.getBoundingClientRect();
+    const tipRect = tip.getBoundingClientRect();
+    const margin = 8;
+
+    let top = r.top - tipRect.height - margin;
+    let placeBelow = false;
+    if (top < margin) {
+      top = r.bottom + margin;
+      placeBelow = true;
+    }
+
+    let left = r.left + r.width / 2 - tipRect.width / 2;
+    if (left < margin) left = margin;
+    if (left + tipRect.width > window.innerWidth - margin) {
+      left = window.innerWidth - tipRect.width - margin;
+    }
+
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+    tip.dataset.placement = placeBelow ? 'below' : 'above';
+  }
+
+  function hide() {
+    tip.classList.remove('visible');
+    currentTarget = null;
+  }
+
+  document.addEventListener('mouseover', e => {
+    const target = e.target.closest('[data-tip]');
+    if (!target || target === currentTarget) return;
+    currentTarget = target;
+    show(target);
+  });
+
+  document.addEventListener('mouseout', e => {
+    if (!currentTarget) return;
+    if (e.target.closest('[data-tip]') === currentTarget && !currentTarget.contains(e.relatedTarget)) {
+      hide();
+    }
+  });
+
+  document.addEventListener('scroll', hide, true);
+  window.addEventListener('resize', hide);
+}
 
 // ─── Batch Context ───
 function initBatchSettings() {
