@@ -440,8 +440,9 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
 /* JS-driven tooltip (renders on top of everything, never clipped) */
 .js-tooltip {
   position: fixed;
-  top: 0;
-  left: 0;
+  top: -9999px;
+  left: -9999px;
+  box-sizing: border-box;
   background: #1e2030;
   color: var(--text);
   font-size: 0.75rem;
@@ -451,7 +452,7 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
   border-radius: 6px;
   border: 1px solid var(--border);
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  max-width: 280px;
+  max-width: 240px;
   width: max-content;
   pointer-events: none;
   opacity: 0;

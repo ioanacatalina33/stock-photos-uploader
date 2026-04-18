@@ -45,31 +45,27 @@ function initTooltips() {
     const text = target.getAttribute('data-tip');
     if (!text) return;
     tip.textContent = text;
+    tip.style.top = '-9999px';
+    tip.style.left = '-9999px';
     tip.classList.add('visible');
-    position(target);
+    requestAnimationFrame(() => position(target));
   }
 
   function position(target) {
     const r = target.getBoundingClientRect();
-    const tipRect = tip.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    const tipH = tip.offsetHeight;
     const margin = 8;
 
-    let top = r.top - tipRect.height - margin;
-    let placeBelow = false;
-    if (top < margin) {
-      top = r.bottom + margin;
-      placeBelow = true;
-    }
+    let top = r.top - tipH - margin;
+    if (top < margin) top = r.bottom + margin;
 
-    let left = r.left + r.width / 2 - tipRect.width / 2;
-    if (left < margin) left = margin;
-    if (left + tipRect.width > window.innerWidth - margin) {
-      left = window.innerWidth - tipRect.width - margin;
-    }
+    let left = r.left + r.width / 2 - tipW / 2;
+    const maxLeft = Math.max(margin, window.innerWidth - tipW - margin);
+    left = Math.max(margin, Math.min(left, maxLeft));
 
     tip.style.top = top + 'px';
     tip.style.left = left + 'px';
-    tip.dataset.placement = placeBelow ? 'below' : 'above';
   }
 
   function hide() {
