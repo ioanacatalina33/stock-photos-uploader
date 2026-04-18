@@ -268,7 +268,7 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
   margin-bottom: 0.25rem;
 }
 
-.field-group input,
+.field-group input:not([type="checkbox"]):not([type="radio"]),
 .field-group textarea,
 .field-group select {
   width: 100%;
@@ -283,7 +283,7 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
   transition: border-color 0.15s;
 }
 
-.field-group input:focus,
+.field-group input:not([type="checkbox"]):not([type="radio"]):focus,
 .field-group textarea:focus,
 .field-group select:focus {
   border-color: var(--primary);
