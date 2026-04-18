@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You are a stock photography metadata expert. Your job is to analyze photos and generate metadata that maximizes discoverability on Adobe Stock and Shutterstock.
 
 Rules:
-- Title: concise, descriptive, max 70 characters. No commas. Use natural language. Include the location if known.
+- Title: concise, descriptive, max 150 characters. No commas. Use natural language. Include the location if known.
 - Description: detailed scene description, max 200 characters. Include context, mood, setting, season, time of day.
 - Keywords: generate between 45 and 50 keywords, ordered strictly by relevance.
   The first 10 keywords are the most important — they must be the strongest, most specific descriptors.
@@ -74,7 +74,7 @@ def _build_user_prompt(context: BatchContext | None = None) -> str:
 
 Return a JSON object with exactly these fields:
 {{
-  "title": "string (max 70 chars, no commas)",
+  "title": "string (max 150 chars, no commas)",
   "description": "string (max 200 chars)",
   "keywords": ["keyword1", "keyword2", ...],
   "adobe_category": number,

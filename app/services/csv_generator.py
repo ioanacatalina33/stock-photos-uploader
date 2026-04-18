@@ -15,7 +15,7 @@ def generate_adobe_csv(photos: list[PhotoItem]) -> str:
 
     Columns: Filename, Title, Keywords, Category, Releases
     - Filename: exact filename including extension (max 30 chars)
-    - Title: max 70 chars, no commas
+    - Title: max 150 chars, no commas
     - Keywords: comma-separated, max 50, ordered by relevance
     - Category: number 1-21
     - Releases: model/property release filenames
@@ -26,7 +26,7 @@ def generate_adobe_csv(photos: list[PhotoItem]) -> str:
 
     for photo in photos:
         filename = photo.filename[:30]
-        title = photo.metadata.title.replace(",", " ")[:70]
+        title = photo.metadata.title.replace(",", " ")[:150]
         keywords = ",".join(photo.metadata.keywords[:50])
         category = photo.metadata.adobe_category or ""
         releases = ",".join(photo.metadata.releases)

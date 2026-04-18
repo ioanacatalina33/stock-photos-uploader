@@ -1,6 +1,7 @@
 const API = '';
 let photos = [];
 let selectedPhotoId = null;
+let detailDirty = false;
 
 const ADOBE_CATS = {
   1:'Animals',2:'Buildings and Architecture',3:'Business',4:'Drinks',
@@ -53,6 +54,33 @@ function initBatchSettings() {
       }
     });
   });
+
+  document.getElementById('setAllEditorial').addEventListener('change', setAllEditorial);
+}
+
+async function setAllEditorial(event) {
+  const checked = event.target.checked;
+  const targets = photos.filter(p => p.metadata.editorial !== checked);
+  if (!targets.length) { renderGrid(); return; }
+
+  const cb = event.target;
+  cb.disabled = true;
+  let updated = 0;
+  for (const p of targets) {
+    const res = await api(`/api/metadata/${p.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ editorial: checked })
+    });
+    if (res.success && res.data) {
+      const idx = photos.findIndex(x => x.id === p.id);
+      if (idx >= 0) photos[idx] = res.data;
+      updated++;
+    }
+  }
+  cb.disabled = false;
+  renderGrid();
+  toast(`Set editorial=${checked} on ${updated} photo(s)`, 'success');
 }
 
 function getBatchContext() {
@@ -144,18 +172,52 @@ function renderGrid() {
          data-id="${p.id}" onclick="openDetail('${p.id}')">
       <img src="${p.thumbnail_url}" alt="${p.original_filename}" loading="lazy">
       <span class="status-badge status-${p.status}">${p.status}</span>
+      <label class="card-editorial" title="Mark this photo as editorial"
+             onclick="event.stopPropagation()">
+        <input type="checkbox" ${p.metadata.editorial ? 'checked' : ''}
+               onchange="toggleCardEditorial('${p.id}', this.checked)">
+        Editorial
+      </label>
       <div class="info">
         <div class="name" title="${p.original_filename}">${p.original_filename}</div>
         ${p.metadata.title ? `<div class="name" style="color:var(--text);margin-top:2px">${p.metadata.title}</div>` : ''}
       </div>
     </div>
   `).join('');
+
+  syncSetAllEditorialCheckbox();
+}
+
+async function toggleCardEditorial(id, checked) {
+  const res = await api(`/api/metadata/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ editorial: checked })
+  });
+  if (res.success && res.data) {
+    const idx = photos.findIndex(x => x.id === id);
+    if (idx >= 0) photos[idx] = res.data;
+    syncSetAllEditorialCheckbox();
+  } else {
+    toast(res.message || 'Failed to update', 'error');
+  }
+}
+
+function syncSetAllEditorialCheckbox() {
+  const cb = document.getElementById('setAllEditorial');
+  if (!cb || !photos.length) return;
+  const allEditorial = photos.every(p => p.metadata.editorial);
+  const noneEditorial = photos.every(p => !p.metadata.editorial);
+  cb.checked = allEditorial;
+  cb.indeterminate = !allEditorial && !noneEditorial;
 }
 
 // ─── Batch Actions ───
 function initBatchActions() {
   document.getElementById('btnAnalyzeAll').addEventListener('click', analyzeAll);
   document.getElementById('btnEmbedAll').addEventListener('click', embedAll);
+  document.getElementById('btnImportCsv').addEventListener('click', () => document.getElementById('importCsvInput').click());
+  document.getElementById('importCsvInput').addEventListener('change', importCsv);
   document.getElementById('btnCsvAdobe').addEventListener('click', () => downloadCSV('adobe'));
   document.getElementById('btnCsvShutter').addEventListener('click', () => downloadCSV('shutterstock'));
   document.getElementById('btnUploadAdobe').addEventListener('click', () => uploadPlatform('adobe'));
@@ -209,6 +271,38 @@ async function embedAll() {
 function downloadCSV(platform) {
   const url = platform === 'adobe' ? '/api/upload/csv/adobe' : '/api/upload/csv/shutterstock';
   window.open(url);
+}
+
+async function importCsv(event) {
+  const input = event.target;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (!photos.length) {
+    toast('Upload photos first, then import a CSV to populate metadata', 'info');
+    input.value = '';
+    return;
+  }
+
+  const btn = document.getElementById('btnImportCsv');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Importing...';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const r = await fetch('/api/metadata/import-csv', { method: 'POST', body: fd });
+    const res = await r.json();
+    toast(res.message || 'Done', res.success ? 'success' : 'error');
+    if (res.success) await loadPhotos();
+  } catch (e) {
+    toast('Import failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origText;
+    input.value = '';
+  }
 }
 
 async function uploadPlatform(platform) {
@@ -265,6 +359,31 @@ function initDetail() {
       e.target.value = '';
     }
   });
+
+  ['detailTitle', 'detailDesc', 'detailAdobeCat', 'detailSSCat1', 'detailSSCat2', 'detailEditorial']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('input', markDetailDirty);
+      el.addEventListener('change', markDetailDirty);
+    });
+}
+
+function markDetailDirty() {
+  if (!selectedPhotoId) return;
+  detailDirty = true;
+  updateSaveButtonState();
+}
+
+function updateSaveButtonState() {
+  const btn = document.getElementById('btnDetailSave');
+  if (!btn) return;
+  if (detailDirty) {
+    btn.textContent = 'Save Changes *';
+    btn.classList.add('dirty');
+  } else {
+    btn.textContent = 'Save Changes';
+    btn.classList.remove('dirty');
+  }
 }
 
 function populateCategorySelects() {
@@ -296,13 +415,18 @@ function openDetail(id) {
   document.getElementById('detailEditorial').checked = p.metadata.editorial;
 
   renderKeywords(p.metadata.keywords || []);
+  detailDirty = false;
+  updateSaveButtonState();
   document.getElementById('detailOverlay').classList.add('open');
   renderGrid();
 }
 
 function closeDetail() {
+  if (detailDirty && !confirm('You have unsaved changes. Discard them?')) return;
   document.getElementById('detailOverlay').classList.remove('open');
   selectedPhotoId = null;
+  detailDirty = false;
+  updateSaveButtonState();
   renderGrid();
 }
 
@@ -324,12 +448,14 @@ function addKeyword(kw) {
   if (current.includes(kw)) return;
   current.push(kw);
   renderKeywords(current);
+  markDetailDirty();
 }
 
 function removeKeyword(i) {
   const current = getDetailKeywords();
   current.splice(i, 1);
   renderKeywords(current);
+  markDetailDirty();
 }
 
 async function saveDetail() {
@@ -353,6 +479,8 @@ async function saveDetail() {
   if (res.success && res.data) {
     const idx = photos.findIndex(x => x.id === selectedPhotoId);
     if (idx >= 0) photos[idx] = res.data;
+    detailDirty = false;
+    updateSaveButtonState();
     renderGrid();
     toast('Metadata saved', 'success');
   } else {

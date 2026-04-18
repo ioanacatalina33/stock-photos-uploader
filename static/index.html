@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Photos Uploader</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
   <header>
@@ -60,12 +60,22 @@
             <input type="text" id="styleOtherInput" placeholder="e.g. food, architecture, people" style="display:none;width:220px;padding:0.3rem 0.6rem;font-size:0.8rem;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
           </div>
         </div>
+        <div style="margin-top:0.75rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
+            <input type="checkbox" id="setAllEditorial"> Set all as editorial
+          </label>
+          <span style="font-size:0.75rem;color:var(--text-muted)" data-tip="Adobe Stock's SFTP CSV has no editorial column, so editorial designation must be done in the Adobe Contributor Portal after upload">
+            Shutterstock: applied via CSV. Adobe: must be set in the Contributor Portal after upload.
+          </span>
+        </div>
       </div>
 
       <div class="batch-bar" id="batchBar" style="display:none">
         <span class="count" id="photoCount">0 photos</span>
         <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>
         <button class="btn btn-outline" id="btnEmbedAll" data-tip="Write the generated metadata (title, description, keywords) directly into image files as IPTC/XMP data so stock platforms auto-detect it">Embed Metadata</button>
+        <button class="btn btn-outline" id="btnImportCsv" data-tip="Import a CSV (unified, Adobe, or Shutterstock format) to populate metadata for matching filenames">Import CSV</button>
+        <input type="file" id="importCsvInput" accept=".csv" style="display:none">
         <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
         <button class="btn btn-outline btn-sm" id="btnCsvAdobe" data-tip="Download a CSV file formatted for Adobe Stock with filenames, titles, keywords, and category numbers">CSV Adobe</button>
         <button class="btn btn-outline btn-sm" id="btnCsvShutter" data-tip="Download a CSV file formatted for Shutterstock with filenames, descriptions, keywords, and category names">CSV Shutterstock</button>
@@ -156,8 +166,8 @@
       </div>
 
       <div class="field-group">
-        <label>Title <span style="font-weight:normal;color:var(--text-muted)">(max 70 chars)</span></label>
-        <input type="text" id="detailTitle" maxlength="70">
+        <label>Title <span style="font-weight:normal;color:var(--text-muted)">(max 150 chars)</span></label>
+        <input type="text" id="detailTitle" maxlength="150">
       </div>
 
       <div class="field-group">
@@ -204,6 +214,6 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
 
 from fastapi import Body
 
+from app.categories import ADOBE_STOCK_CATEGORIES, SHUTTERSTOCK_CATEGORIES
 from app.config import load_settings
 from app.models.schemas import (
     APIResponse,
@@ -146,6 +149,149 @@ async def embed_metadata(photo_id: str) -> APIResponse:
     return APIResponse(
         success=False,
         message="Failed to embed metadata. Is ExifTool installed?",
+    )
+
+
+def _norm_header(h: str) -> str:
+    return h.strip().lower().replace("_", " ").replace("-", " ")
+
+
+def _parse_keywords(value: str) -> list[str]:
+    if not value:
+        return []
+    return [k.strip() for k in value.split(",") if k.strip()][:50]
+
+
+def _parse_bool(value: str) -> bool:
+    return value.strip().lower() in ("yes", "true", "1", "y", "editorial")
+
+
+def _find_photo_by_filename(name: str):
+    name = (name or "").strip()
+    if not name:
+        return None
+    for item in photo_store.values():
+        if item.filename == name or item.original_filename == name:
+            return item
+    return None
+
+
+@router.post("/import-csv")
+async def import_csv(file: UploadFile = File(...)) -> APIResponse:
+    """Import a CSV to populate metadata for existing photos.
+
+    Auto-detects the format by header columns:
+    - Unified:     Filename, Title, Description, Keywords, Adobe Category,
+                   Shutterstock Category 1, Shutterstock Category 2, Editorial
+    - Adobe:       Filename, Title, Keywords, Category, Releases
+    - Shutterstock:Filename, Description, Keywords, Categories, Editorial, R-rated
+    Rows are matched to photos by Filename (or original filename).
+    """
+    if not photo_store:
+        return APIResponse(success=False, message="No photos uploaded yet")
+
+    try:
+        raw = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return APIResponse(success=False, message="CSV must be UTF-8 encoded")
+
+    reader = csv.DictReader(io.StringIO(raw))
+    if not reader.fieldnames:
+        return APIResponse(success=False, message="CSV has no header row")
+
+    headers = {_norm_header(h): h for h in reader.fieldnames}
+
+    if "filename" not in headers:
+        return APIResponse(success=False, message="CSV must contain a 'Filename' column")
+
+    has_title = "title" in headers
+    has_description = "description" in headers
+    has_keywords = "keywords" in headers
+    has_adobe_cat = "adobe category" in headers or "category" in headers
+    has_ss_cat = (
+        "shutterstock category 1" in headers
+        or "categories" in headers
+        or "shutterstock category" in headers
+    )
+    has_editorial = "editorial" in headers
+
+    updated = 0
+    not_found: list[str] = []
+    total = 0
+
+    for row in reader:
+        total += 1
+        filename = (row.get(headers["filename"]) or "").strip()
+        item = _find_photo_by_filename(filename)
+        if not item:
+            if filename:
+                not_found.append(filename)
+            continue
+
+        m = item.metadata
+
+        if has_title:
+            val = (row.get(headers["title"]) or "").strip()
+            if val:
+                m.title = val[:200]
+
+        if has_description:
+            val = (row.get(headers["description"]) or "").strip()
+            if val:
+                m.description = val[:2048]
+
+        if has_keywords:
+            val = row.get(headers["keywords"]) or ""
+            kws = _parse_keywords(val)
+            if kws:
+                m.keywords = kws
+
+        if has_adobe_cat:
+            key = headers.get("adobe category") or headers.get("category")
+            val = (row.get(key) or "").strip() if key else ""
+            if val:
+                try:
+                    num = int(val)
+                    if num in ADOBE_STOCK_CATEGORIES:
+                        m.adobe_category = num
+                except ValueError:
+                    pass
+
+        if has_ss_cat:
+            if "shutterstock category 1" in headers:
+                v1 = (row.get(headers["shutterstock category 1"]) or "").strip()
+                if v1 and v1 in SHUTTERSTOCK_CATEGORIES:
+                    m.shutterstock_category_1 = v1
+                if "shutterstock category 2" in headers:
+                    v2 = (row.get(headers["shutterstock category 2"]) or "").strip()
+                    if v2 and v2 in SHUTTERSTOCK_CATEGORIES:
+                        m.shutterstock_category_2 = v2
+            elif "categories" in headers:
+                val = (row.get(headers["categories"]) or "").strip()
+                if val:
+                    parts = [p.strip() for p in val.split(",") if p.strip()]
+                    if parts and parts[0] in SHUTTERSTOCK_CATEGORIES:
+                        m.shutterstock_category_1 = parts[0]
+                    if len(parts) > 1 and parts[1] in SHUTTERSTOCK_CATEGORIES:
+                        m.shutterstock_category_2 = parts[1]
+
+        if has_editorial:
+            val = row.get(headers["editorial"]) or ""
+            m.editorial = _parse_bool(val)
+
+        if item.status == ProcessingStatus.PENDING:
+            item.status = ProcessingStatus.READY
+
+        updated += 1
+
+    msg = f"Updated {updated} of {total} row(s)"
+    if not_found:
+        msg += f"; {len(not_found)} filename(s) not found"
+
+    return APIResponse(
+        success=True,
+        message=msg,
+        data={"updated": updated, "total": total, "not_found": not_found},
     )
 
 
