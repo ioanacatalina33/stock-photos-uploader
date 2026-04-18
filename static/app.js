@@ -119,26 +119,48 @@ function initBatchSettings() {
 }
 
 async function setAllEditorial(event) {
-  const checked = event.target.checked;
-  const targets = photos.filter(p => p.metadata.editorial !== checked);
-  if (!targets.length) { renderGrid(); return; }
-
   const cb = event.target;
+  cb.indeterminate = false;
+  const checked = cb.checked;
+  const status = document.getElementById('setAllEditorialStatus');
+
+  const targets = photos.filter(p => p.metadata.editorial !== checked);
+  if (!targets.length) {
+    if (status) status.textContent = `All ${photos.length} photo(s) already ${checked ? '' : 'non-'}editorial`;
+    renderGrid();
+    return;
+  }
+
   cb.disabled = true;
-  let updated = 0;
-  for (const p of targets) {
-    const res = await api(`/api/metadata/${p.id}`, {
+  if (status) status.textContent = `Applying to ${targets.length} photo(s)...`;
+
+  const results = await Promise.all(targets.map(p =>
+    api(`/api/metadata/${p.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ editorial: checked })
-    });
-    if (res.success && res.data) {
+    }).then(res => ({ p, res }))
+  ));
+
+  let updated = 0;
+  let failed = 0;
+  for (const { p, res } of results) {
+    if (res && res.success && res.data) {
       const idx = photos.findIndex(x => x.id === p.id);
       if (idx >= 0) photos[idx] = res.data;
       updated++;
+    } else {
+      failed++;
     }
   }
+
   cb.disabled = false;
+  if (status) {
+    status.textContent = failed
+      ? `Set editorial=${checked} on ${updated} photo(s), ${failed} failed`
+      : `Set editorial=${checked} on ${updated} photo(s)`;
+    setTimeout(() => { if (status.textContent.startsWith('Set editorial')) status.textContent = ''; }, 3000);
+  }
   renderGrid();
 }
 

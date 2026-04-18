@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Photos Uploader</title>
-  <link rel="stylesheet" href="/static/style.css?v=8">
+  <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body>
   <header>
@@ -64,6 +64,7 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
             <input type="checkbox" id="setAllEditorial"> Set all as editorial
           </label>
+          <span id="setAllEditorialStatus" style="font-size:0.75rem;color:var(--success);font-weight:600"></span>
           <span style="font-size:0.75rem;color:var(--text-muted)" data-tip="Adobe Stock's SFTP CSV has no editorial column, so editorial designation must be done in the Adobe Contributor Portal after upload">
             Shutterstock: applied via CSV. Adobe: must be set in the Contributor Portal after upload.
           </span>
@@ -212,6 +213,6 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>
