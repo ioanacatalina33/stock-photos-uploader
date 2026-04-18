@@ -43,10 +43,17 @@ def _get_ready_photos(photo_ids: list[str] | None = None):
     ]
 
 
+def _parse_ids_param(ids: str | None) -> list[str] | None:
+    if not ids:
+        return None
+    parts = [s.strip() for s in ids.split(",") if s.strip()]
+    return parts or None
+
+
 @router.get("/csv/adobe")
-async def download_adobe_csv():
-    """Download Adobe Stock CSV for all ready photos."""
-    photos = _get_ready_photos()
+async def download_adobe_csv(ids: str | None = None):
+    """Download Adobe Stock CSV. Optional ?ids=a,b,c filters to selected ready photos."""
+    photos = _get_ready_photos(_parse_ids_param(ids))
     if not photos:
         return APIResponse(success=False, message="No ready photos")
     content = generate_adobe_csv(photos)
@@ -58,9 +65,9 @@ async def download_adobe_csv():
 
 
 @router.get("/csv/shutterstock")
-async def download_shutterstock_csv():
-    """Download Shutterstock CSV for all ready photos."""
-    photos = _get_ready_photos()
+async def download_shutterstock_csv(ids: str | None = None):
+    """Download Shutterstock CSV. Optional ?ids=a,b,c filters to selected ready photos."""
+    photos = _get_ready_photos(_parse_ids_param(ids))
     if not photos:
         return APIResponse(success=False, message="No ready photos")
     content = generate_shutterstock_csv(photos)

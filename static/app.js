@@ -3,6 +3,7 @@ let photos = [];
 let selectedPhotoId = null;
 let detailDirty = false;
 let detailSnapshot = null;
+let selectedIds = new Set();
 
 const ADOBE_CATS = {
   1:'Animals',2:'Buildings and Architecture',3:'Business',4:'Drinks',
@@ -240,6 +241,8 @@ function renderGrid() {
   const batchSettings = document.getElementById('batchSettings');
   const count = document.getElementById('photoCount');
 
+  pruneSelection();
+
   bar.style.display = photos.length ? 'flex' : 'none';
   batchSettings.style.display = photos.length ? 'block' : 'none';
   count.textContent = photos.length + ' photo(s)';
@@ -248,11 +251,16 @@ function renderGrid() {
   document.getElementById('statusText').textContent =
     photos.length ? `${readyCount}/${photos.length} ready` : '';
 
-  grid.innerHTML = photos.map(p => `
-    <div class="photo-card ${selectedPhotoId === p.id ? 'selected' : ''}"
-         data-id="${p.id}" onclick="openDetail('${p.id}')">
+  grid.innerHTML = photos.map(p => {
+    const classes = ['photo-card'];
+    if (selectedPhotoId === p.id) classes.push('selected');
+    if (selectedIds.has(p.id)) classes.push('multi-selected');
+    return `
+    <div class="${classes.join(' ')}"
+         data-id="${p.id}" onclick="onCardClick(event, '${p.id}')">
       <img src="${p.thumbnail_url}" alt="${p.original_filename}" loading="lazy">
       <span class="status-badge status-${p.status}">${p.status}</span>
+      <span class="card-select-mark">&#10003;</span>
       <button class="card-remove" data-tip="Remove this photo"
               onclick="event.stopPropagation(); removePhoto('${p.id}')">&times;</button>
       <label class="card-editorial" data-tip="Mark this photo as editorial"
@@ -265,10 +273,103 @@ function renderGrid() {
         <div class="name" title="${p.original_filename}">${p.original_filename}</div>
         ${p.metadata.title ? `<div class="name" style="color:var(--text);margin-top:2px">${p.metadata.title}</div>` : ''}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   syncSetAllEditorialCheckbox();
+  updateSelectionUI();
+}
+
+function onCardClick(event, id) {
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    toggleSelection(id);
+    return;
+  }
+  if (event.shiftKey && selectedIds.size > 0) {
+    event.preventDefault();
+    extendSelectionTo(id);
+    return;
+  }
+  openDetail(id);
+}
+
+function toggleSelection(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  renderGrid();
+}
+
+function extendSelectionTo(id) {
+  const ids = photos.map(p => p.id);
+  const targetIdx = ids.indexOf(id);
+  if (targetIdx < 0) return;
+  let lastIdx = -1;
+  for (let i = ids.length - 1; i >= 0; i--) {
+    if (selectedIds.has(ids[i])) { lastIdx = i; break; }
+  }
+  if (lastIdx < 0) lastIdx = targetIdx;
+  const [from, to] = lastIdx <= targetIdx ? [lastIdx, targetIdx] : [targetIdx, lastIdx];
+  for (let i = from; i <= to; i++) selectedIds.add(ids[i]);
+  renderGrid();
+}
+
+function pruneSelection() {
+  const valid = new Set(photos.map(p => p.id));
+  for (const id of Array.from(selectedIds)) {
+    if (!valid.has(id)) selectedIds.delete(id);
+  }
+}
+
+function clearSelection() {
+  if (!selectedIds.size) return;
+  selectedIds.clear();
+  renderGrid();
+}
+
+function getSelectedPhotos(filterFn) {
+  const sel = photos.filter(p => selectedIds.has(p.id));
+  return filterFn ? sel.filter(filterFn) : sel;
+}
+
+function getActionTargets(filterFn) {
+  if (selectedIds.size > 0) return getSelectedPhotos(filterFn);
+  return filterFn ? photos.filter(filterFn) : photos.slice();
+}
+
+function updateSelectionUI() {
+  const n = selectedIds.size;
+  const info = document.getElementById('selectionInfo');
+  const hint = document.getElementById('selectionHint');
+  const cnt = document.getElementById('selectionCount');
+  if (info) info.style.display = n > 0 ? 'inline' : 'none';
+  if (hint) hint.style.display = n > 0 ? 'none' : 'inline';
+  if (cnt) cnt.textContent = String(n);
+
+  const set = (id, label) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = label;
+  };
+
+  if (n > 0) {
+    set('btnAnalyzeAll', `Analyze ${n} selected with AI`);
+    set('btnEmbedAll', `Embed ${n} selected`);
+    set('btnCsvAdobe', `CSV Adobe (${n})`);
+    set('btnCsvShutter', `CSV Shutterstock (${n})`);
+    set('btnUploadAdobe', `Upload ${n} to Adobe`);
+    set('btnUploadShutter', `Upload ${n} to Shutterstock`);
+    set('btnUploadBoth', `Upload ${n} to Both`);
+    set('btnClearAll', `Remove ${n} selected`);
+  } else {
+    set('btnAnalyzeAll', 'Analyze All with AI');
+    set('btnEmbedAll', 'Embed Metadata');
+    set('btnCsvAdobe', 'CSV Adobe');
+    set('btnCsvShutter', 'CSV Shutterstock');
+    set('btnUploadAdobe', 'Upload Adobe');
+    set('btnUploadShutter', 'Upload Shutterstock');
+    set('btnUploadBoth', 'Upload Both');
+    set('btnClearAll', 'Clear All');
+  }
 }
 
 async function toggleCardEditorial(id, checked) {
@@ -298,6 +399,7 @@ function syncSetAllEditorialCheckbox() {
 // ─── Batch Actions ───
 function initBatchActions() {
   document.getElementById('btnAnalyzeAll').addEventListener('click', analyzeAll);
+  document.getElementById('btnEmbedAll').addEventListener('click', embedAll);
   document.getElementById('btnImportCsv').addEventListener('click', () => document.getElementById('importCsvInput').click());
   document.getElementById('importCsvInput').addEventListener('change', importCsv);
   document.getElementById('btnCsvAdobe').addEventListener('click', () => downloadCSV('adobe'));
@@ -305,12 +407,16 @@ function initBatchActions() {
   document.getElementById('btnUploadAdobe').addEventListener('click', () => uploadPlatform('adobe'));
   document.getElementById('btnUploadShutter').addEventListener('click', () => uploadPlatform('shutterstock'));
   document.getElementById('btnUploadBoth').addEventListener('click', () => uploadPlatform('both'));
-  document.getElementById('btnClearAll').addEventListener('click', clearAll);
+  document.getElementById('btnClearAll').addEventListener('click', clearAllOrSelected);
+  document.getElementById('btnClearSelection').addEventListener('click', clearSelection);
 }
 
 async function analyzeAll() {
-  const pending = photos.filter(p => p.status === 'pending' || p.status === 'error');
-  if (!pending.length) { toast('No photos to analyze', 'info'); return; }
+  const pending = getActionTargets(p => p.status === 'pending' || p.status === 'error');
+  if (!pending.length) {
+    toast(selectedIds.size ? 'No selected photos need analysis' : 'No photos to analyze', 'info');
+    return;
+  }
 
   showProgress('Analyzing with AI...', 0, pending.length);
   const btn = document.getElementById('btnAnalyzeAll');
@@ -339,8 +445,33 @@ async function analyzeAll() {
   loadPhotos();
 }
 
+async function embedAll() {
+  const targets = getActionTargets(p => p.status === 'ready');
+  if (!targets.length) {
+    toast(selectedIds.size ? 'No selected photos are ready to embed' : 'No ready photos to embed', 'info');
+    return;
+  }
+  const btn = document.getElementById('btnEmbedAll');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Embedding...';
+  const body = selectedIds.size > 0 ? { photo_ids: targets.map(p => p.id) } : {};
+  const res = await api('/api/metadata/embed-batch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  btn.disabled = false;
+  btn.textContent = origText;
+  toast(res.message || 'Done', res.success ? 'success' : 'error');
+}
+
 function downloadCSV(platform) {
-  const url = platform === 'adobe' ? '/api/upload/csv/adobe' : '/api/upload/csv/shutterstock';
+  let url = platform === 'adobe' ? '/api/upload/csv/adobe' : '/api/upload/csv/shutterstock';
+  if (selectedIds.size > 0) {
+    const ids = Array.from(selectedIds).join(',');
+    url += '?ids=' + encodeURIComponent(ids);
+  }
   window.open(url);
 }
 
@@ -378,8 +509,11 @@ async function importCsv(event) {
 
 async function uploadPlatform(platform) {
   hideProgress();
-  const ready = photos.filter(p => p.status === 'ready');
-  if (!ready.length) { toast('No ready photos to upload', 'info'); return; }
+  const ready = getActionTargets(p => p.status === 'ready');
+  if (!ready.length) {
+    toast(selectedIds.size ? 'No selected photos are ready to upload' : 'No ready photos to upload', 'info');
+    return;
+  }
 
   const ids = ready.map(p => p.id);
   const btnMap = { adobe: 'btnUploadAdobe', shutterstock: 'btnUploadShutter', both: 'btnUploadBoth' };
@@ -407,10 +541,31 @@ async function uploadPlatform(platform) {
   loadPhotos();
 }
 
-async function clearAll() {
+async function clearAllOrSelected() {
+  if (selectedIds.size > 0) {
+    const ids = Array.from(selectedIds);
+    if (!confirm(`Remove ${ids.length} selected photo(s)?`)) return;
+    let removed = 0;
+    let failed = 0;
+    await Promise.all(ids.map(async id => {
+      const res = await api(`/api/photos/${id}`, { method: 'DELETE' });
+      if (res.success) removed++;
+      else failed++;
+    }));
+    photos = photos.filter(p => !selectedIds.has(p.id));
+    if (selectedIds.has(selectedPhotoId)) closeDetail();
+    selectedIds.clear();
+    renderGrid();
+    toast(failed
+      ? `Removed ${removed}, ${failed} failed`
+      : `Removed ${removed} photo(s)`, failed ? 'error' : 'success');
+    return;
+  }
+
   if (!confirm('Delete all photos?')) return;
   await api('/api/photos/', { method: 'DELETE' });
   photos = [];
+  selectedIds.clear();
   renderGrid();
   toast('All photos cleared', 'info');
 }
@@ -436,6 +591,7 @@ function initDetail() {
   document.getElementById('detailClose').addEventListener('click', closeDetail);
   document.getElementById('btnDetailSave').addEventListener('click', saveDetail);
   document.getElementById('btnDetailAnalyze').addEventListener('click', reanalyzeDetail);
+  document.getElementById('btnDetailEmbed').addEventListener('click', embedDetail);
 
   document.getElementById('detailKwInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.value.trim()) {

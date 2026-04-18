@@ -26,28 +26,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
-def _auto_embed(item) -> None:
-    """Best-effort embed of metadata into the file. Never raises."""
-    try:
-        write_metadata(item.filepath, item.metadata)
-    except Exception:
-        logger.exception("Auto-embed failed for %s", item.id)
+def _is_metadata_ready(metadata) -> bool:
+    """A photo counts as 'ready' once it has a title and at least one keyword.
 
-
-def _is_metadata_complete(metadata) -> bool:
-    """A photo is 'ready' only when all upload-critical fields are present."""
-    return bool(
-        (metadata.title or "").strip()
-        and (metadata.description or "").strip()
-        and metadata.keywords
-        and metadata.adobe_category
-        and (metadata.shutterstock_category_1 or "").strip()
-    )
+    Categories and description are recommended but can be filled or fixed
+    later in the detail panel without blocking the ready status.
+    """
+    return bool((metadata.title or "").strip() and metadata.keywords)
 
 
 def _refresh_status(item) -> None:
-    """Promote PENDING -> READY only when metadata is complete."""
-    if item.status == ProcessingStatus.PENDING and _is_metadata_complete(item.metadata):
+    """Promote PENDING -> READY when metadata has the minimum required fields."""
+    if item.status == ProcessingStatus.PENDING and _is_metadata_ready(item.metadata):
         item.status = ProcessingStatus.READY
 
 
@@ -73,10 +63,9 @@ async def analyze_single(
         item.metadata = metadata
         item.status = (
             ProcessingStatus.READY
-            if _is_metadata_complete(metadata)
+            if _is_metadata_ready(metadata)
             else ProcessingStatus.PENDING
         )
-        _auto_embed(item)
         return APIResponse(
             success=True,
             message="Analysis complete",
@@ -126,13 +115,12 @@ async def analyze_batch(
                 item.filepath, settings.openai_api_key, context
             )
             item.metadata = metadata
-            if _is_metadata_complete(metadata):
+            if _is_metadata_ready(metadata):
                 item.status = ProcessingStatus.READY
                 results.append({"id": pid, "status": "ready"})
             else:
                 item.status = ProcessingStatus.PENDING
                 results.append({"id": pid, "status": "incomplete"})
-            _auto_embed(item)
         except Exception as e:
             item.status = ProcessingStatus.ERROR
             item.error_message = str(e)
@@ -168,7 +156,6 @@ async def update_metadata(
         setattr(item.metadata, key, value)
 
     _refresh_status(item)
-    _auto_embed(item)
 
     return APIResponse(
         success=True,
@@ -336,16 +323,35 @@ async def import_csv(file: UploadFile = File(...)) -> APIResponse:
 
 
 @router.post("/embed-batch")
-async def embed_batch() -> APIResponse:
-    """Embed metadata into all ready photos."""
+async def embed_batch(
+    photo_ids: list[str] | None = Body(None, embed=True),
+) -> APIResponse:
+    """Embed metadata into ready photos.
+
+    If photo_ids is provided, only embed those (filtered to ready ones);
+    otherwise embed all ready photos.
+    """
+    if photo_ids:
+        targets = [
+            photo_store[pid]
+            for pid in photo_ids
+            if pid in photo_store
+            and photo_store[pid].status == ProcessingStatus.READY
+        ]
+    else:
+        targets = [
+            item
+            for item in photo_store.values()
+            if item.status == ProcessingStatus.READY
+        ]
+
     embedded = 0
     failed = 0
-    for item in photo_store.values():
-        if item.status == ProcessingStatus.READY:
-            if write_metadata(item.filepath, item.metadata):
-                embedded += 1
-            else:
-                failed += 1
+    for item in targets:
+        if write_metadata(item.filepath, item.metadata):
+            embedded += 1
+        else:
+            failed += 1
     return APIResponse(
         success=True,
         message=f"Embedded metadata in {embedded} file(s), {failed} failed",
