@@ -147,8 +147,8 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
 /* Photo grid */
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
 }
 
 .photo-card {
@@ -352,6 +352,20 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
   transition: border-color 0.15s;
 }
 
+.field-group select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%2394a3b8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 12px 8px;
+  cursor: pointer;
+}
+
+.field-group select::-ms-expand { display: none; }
+
 .field-group input:not([type="checkbox"]):not([type="radio"]):focus,
 .field-group textarea:focus,
 .field-group select:focus {
@@ -536,7 +550,7 @@ main { padding: 1.5rem; max-width: 1400px; margin: 0 auto; }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .photo-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .photo-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .detail-panel { width: 100vw; }
   .batch-bar-header, .batch-bar-row { flex-direction: column; align-items: stretch; }
   .batch-spacer { display: none; }
