@@ -2,6 +2,7 @@ const API = '';
 let photos = [];
 let selectedPhotoId = null;
 let detailDirty = false;
+let detailSnapshot = null;
 
 const ADOBE_CATS = {
   1:'Animals',2:'Buildings and Architecture',3:'Business',4:'Drinks',
@@ -139,7 +140,6 @@ async function setAllEditorial(event) {
   }
   cb.disabled = false;
   renderGrid();
-  toast(`Set editorial=${checked} on ${updated} photo(s)`, 'success');
 }
 
 function getBatchContext() {
@@ -231,7 +231,9 @@ function renderGrid() {
          data-id="${p.id}" onclick="openDetail('${p.id}')">
       <img src="${p.thumbnail_url}" alt="${p.original_filename}" loading="lazy">
       <span class="status-badge status-${p.status}">${p.status}</span>
-      <label class="card-editorial" title="Mark this photo as editorial"
+      <button class="card-remove" data-tip="Remove this photo"
+              onclick="event.stopPropagation(); removePhoto('${p.id}')">&times;</button>
+      <label class="card-editorial" data-tip="Mark this photo as editorial"
              onclick="event.stopPropagation()">
         <input type="checkbox" ${p.metadata.editorial ? 'checked' : ''}
                onchange="toggleCardEditorial('${p.id}', this.checked)">
@@ -274,7 +276,6 @@ function syncSetAllEditorialCheckbox() {
 // ─── Batch Actions ───
 function initBatchActions() {
   document.getElementById('btnAnalyzeAll').addEventListener('click', analyzeAll);
-  document.getElementById('btnEmbedAll').addEventListener('click', embedAll);
   document.getElementById('btnImportCsv').addEventListener('click', () => document.getElementById('importCsvInput').click());
   document.getElementById('importCsvInput').addEventListener('change', importCsv);
   document.getElementById('btnCsvAdobe').addEventListener('click', () => downloadCSV('adobe'));
@@ -314,17 +315,6 @@ async function analyzeAll() {
   btn.disabled = false;
   toast('Analysis complete', 'success');
   loadPhotos();
-}
-
-async function embedAll() {
-  const btn = document.getElementById('btnEmbedAll');
-  const origText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Embedding...';
-  const res = await api('/api/metadata/embed-batch', { method: 'POST' });
-  btn.disabled = false;
-  btn.textContent = origText;
-  toast(res.message || 'Done', res.success ? 'success' : 'error');
 }
 
 function downloadCSV(platform) {
@@ -403,13 +393,27 @@ async function clearAll() {
   toast('All photos cleared', 'info');
 }
 
+async function removePhoto(id) {
+  const p = photos.find(x => x.id === id);
+  if (!p) return;
+  if (!confirm(`Remove "${p.original_filename}"?`)) return;
+  const res = await api(`/api/photos/${id}`, { method: 'DELETE' });
+  if (res.success) {
+    photos = photos.filter(x => x.id !== id);
+    if (selectedPhotoId === id) closeDetail();
+    renderGrid();
+    toast('Photo removed', 'success');
+  } else {
+    toast(res.message || 'Failed to remove photo', 'error');
+  }
+}
+
 // ─── Detail Panel ───
 function initDetail() {
   document.getElementById('detailBackdrop').addEventListener('click', closeDetail);
   document.getElementById('detailClose').addEventListener('click', closeDetail);
   document.getElementById('btnDetailSave').addEventListener('click', saveDetail);
   document.getElementById('btnDetailAnalyze').addEventListener('click', reanalyzeDetail);
-  document.getElementById('btnDetailEmbed').addEventListener('click', embedDetail);
 
   document.getElementById('detailKwInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.value.trim()) {
@@ -422,14 +426,30 @@ function initDetail() {
   ['detailTitle', 'detailDesc', 'detailAdobeCat', 'detailSSCat1', 'detailSSCat2', 'detailEditorial']
     .forEach(id => {
       const el = document.getElementById(id);
-      el.addEventListener('input', markDetailDirty);
-      el.addEventListener('change', markDetailDirty);
+      el.addEventListener('input', recomputeDirty);
+      el.addEventListener('change', recomputeDirty);
     });
 }
 
-function markDetailDirty() {
-  if (!selectedPhotoId) return;
-  detailDirty = true;
+function getDetailFormState() {
+  return {
+    title: document.getElementById('detailTitle').value,
+    description: document.getElementById('detailDesc').value,
+    keywords: getDetailKeywords(),
+    adobe_category: document.getElementById('detailAdobeCat').value,
+    shutterstock_category_1: document.getElementById('detailSSCat1').value,
+    shutterstock_category_2: document.getElementById('detailSSCat2').value,
+    editorial: document.getElementById('detailEditorial').checked,
+  };
+}
+
+function takeDetailSnapshot() {
+  detailSnapshot = JSON.stringify(getDetailFormState());
+}
+
+function recomputeDirty() {
+  if (!selectedPhotoId || detailSnapshot === null) return;
+  detailDirty = JSON.stringify(getDetailFormState()) !== detailSnapshot;
   updateSaveButtonState();
 }
 
@@ -474,6 +494,7 @@ function openDetail(id) {
   document.getElementById('detailEditorial').checked = p.metadata.editorial;
 
   renderKeywords(p.metadata.keywords || []);
+  takeDetailSnapshot();
   detailDirty = false;
   updateSaveButtonState();
   document.getElementById('detailOverlay').classList.add('open');
@@ -485,6 +506,7 @@ function closeDetail() {
   document.getElementById('detailOverlay').classList.remove('open');
   selectedPhotoId = null;
   detailDirty = false;
+  detailSnapshot = null;
   updateSaveButtonState();
   renderGrid();
 }
@@ -507,14 +529,14 @@ function addKeyword(kw) {
   if (current.includes(kw)) return;
   current.push(kw);
   renderKeywords(current);
-  markDetailDirty();
+  recomputeDirty();
 }
 
 function removeKeyword(i) {
   const current = getDetailKeywords();
   current.splice(i, 1);
   renderKeywords(current);
-  markDetailDirty();
+  recomputeDirty();
 }
 
 async function saveDetail() {
@@ -538,6 +560,7 @@ async function saveDetail() {
   if (res.success && res.data) {
     const idx = photos.findIndex(x => x.id === selectedPhotoId);
     if (idx >= 0) photos[idx] = res.data;
+    takeDetailSnapshot();
     detailDirty = false;
     updateSaveButtonState();
     renderGrid();
@@ -564,12 +587,6 @@ async function reanalyzeDetail() {
   } else {
     toast(res.message || 'Analysis failed', 'error');
   }
-}
-
-async function embedDetail() {
-  if (!selectedPhotoId) return;
-  const res = await api(`/api/metadata/embed/${selectedPhotoId}`, { method: 'POST' });
-  toast(res.message || 'Done', res.success ? 'success' : 'error');
 }
 
 // ─── Settings ───

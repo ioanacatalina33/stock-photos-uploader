@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/metadata", tags=["metadata"])
 
 
+def _auto_embed(item) -> None:
+    """Best-effort embed of metadata into the file. Never raises."""
+    try:
+        write_metadata(item.filepath, item.metadata)
+    except Exception:
+        logger.exception("Auto-embed failed for %s", item.id)
+
+
 @router.post("/analyze/{photo_id}")
 async def analyze_single(
     photo_id: str,
@@ -47,6 +55,7 @@ async def analyze_single(
         )
         item.metadata = metadata
         item.status = ProcessingStatus.READY
+        _auto_embed(item)
         return APIResponse(
             success=True,
             message="Analysis complete",
@@ -97,6 +106,7 @@ async def analyze_batch(
             )
             item.metadata = metadata
             item.status = ProcessingStatus.READY
+            _auto_embed(item)
             results.append({"id": pid, "status": "ready"})
         except Exception as e:
             item.status = ProcessingStatus.ERROR
@@ -128,6 +138,8 @@ async def update_metadata(
 
     if item.status == ProcessingStatus.PENDING:
         item.status = ProcessingStatus.READY
+
+    _auto_embed(item)
 
     return APIResponse(
         success=True,

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Photos Uploader</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <link rel="stylesheet" href="/static/style.css?v=7">
 </head>
 <body>
   <header>
@@ -72,8 +72,7 @@
 
       <div class="batch-bar" id="batchBar" style="display:none">
         <span class="count" id="photoCount">0 photos</span>
-        <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>
-        <button class="btn btn-outline" id="btnEmbedAll" data-tip="Write the generated metadata (title, description, keywords) directly into image files as IPTC/XMP data so stock platforms auto-detect it">Embed Metadata</button>
+        <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos. Metadata is auto-embedded into the image file.">Analyze All with AI</button>
         <button class="btn btn-outline" id="btnImportCsv" data-tip="Import a CSV (unified, Adobe, or Shutterstock format) to populate metadata for matching filenames">Import CSV</button>
         <input type="file" id="importCsvInput" accept=".csv" style="display:none">
         <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
@@ -205,15 +204,14 @@
       </div>
 
       <div style="display:flex;gap:0.5rem;margin-top:1rem">
-        <button class="btn btn-primary" id="btnDetailSave" data-tip="Save your edits to the title, description, keywords, and categories for this photo">Save Changes</button>
+        <button class="btn btn-primary" id="btnDetailSave" data-tip="Save your edits and auto-embed updated metadata into the image file">Save Changes</button>
         <button class="btn btn-outline" id="btnDetailAnalyze" data-tip="Run AI analysis again on this photo to regenerate all metadata from scratch">Re-analyze</button>
-        <button class="btn btn-outline" id="btnDetailEmbed" data-tip="Write the current metadata into the image file as IPTC/XMP data">Embed</button>
       </div>
     </div>
   </div>
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=7"></script>
 </body>
 </html>
