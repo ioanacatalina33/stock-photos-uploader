@@ -123,17 +123,14 @@ async function setAllEditorial(event) {
   const cb = event.target;
   cb.indeterminate = false;
   const checked = cb.checked;
-  const status = document.getElementById('setAllEditorialStatus');
 
   const targets = photos.filter(p => p.metadata.editorial !== checked);
   if (!targets.length) {
-    if (status) status.textContent = `All ${photos.length} photo(s) already ${checked ? '' : 'non-'}editorial`;
     renderGrid();
     return;
   }
 
   cb.disabled = true;
-  if (status) status.textContent = `Applying to ${targets.length} photo(s)...`;
 
   const results = await Promise.all(targets.map(p =>
     api(`/api/metadata/${p.id}`, {
@@ -143,25 +140,14 @@ async function setAllEditorial(event) {
     }).then(res => ({ p, res }))
   ));
 
-  let updated = 0;
-  let failed = 0;
   for (const { p, res } of results) {
     if (res && res.success && res.data) {
       const idx = photos.findIndex(x => x.id === p.id);
       if (idx >= 0) photos[idx] = res.data;
-      updated++;
-    } else {
-      failed++;
     }
   }
 
   cb.disabled = false;
-  if (status) {
-    status.textContent = failed
-      ? `Set editorial=${checked} on ${updated} photo(s), ${failed} failed`
-      : `Set editorial=${checked} on ${updated} photo(s)`;
-    setTimeout(() => { if (status.textContent.startsWith('Set editorial')) status.textContent = ''; }, 3000);
-  }
   renderGrid();
 }
 
@@ -368,7 +354,7 @@ function updateSelectionUI() {
     set('btnUploadAdobe', 'Upload Adobe');
     set('btnUploadShutter', 'Upload Shutterstock');
     set('btnUploadBoth', 'Upload Both');
-    set('btnClearAll', 'Clear All');
+    set('btnClearAll', 'Remove All');
   }
 }
 
@@ -562,12 +548,12 @@ async function clearAllOrSelected() {
     return;
   }
 
-  if (!confirm('Delete all photos?')) return;
+  if (!confirm('Remove all photos?')) return;
   await api('/api/photos/', { method: 'DELETE' });
   photos = [];
   selectedIds.clear();
   renderGrid();
-  toast('All photos cleared', 'info');
+  toast('All photos removed', 'info');
 }
 
 async function removePhoto(id) {

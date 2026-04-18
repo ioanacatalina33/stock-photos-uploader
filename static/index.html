@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Photos Uploader</title>
-  <link rel="stylesheet" href="/static/style.css?v=10">
+  <link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
   <header>
@@ -64,35 +64,42 @@
           <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
             <input type="checkbox" id="setAllEditorial"> Set all as editorial
           </label>
-          <span id="setAllEditorialStatus" style="font-size:0.75rem;color:var(--success);font-weight:600"></span>
           <span style="font-size:0.75rem;color:var(--text-muted)" data-tip="Adobe Stock's SFTP CSV has no editorial column, so editorial designation must be done in the Adobe Contributor Portal after upload">
             Shutterstock: applied via CSV. Adobe: must be set in the Contributor Portal after upload.
           </span>
         </div>
+        <div style="margin-top:0.75rem;display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" id="btnImportCsv" data-tip="Import a CSV (unified, Adobe, or Shutterstock format) to populate metadata for matching filenames">Import CSV</button>
+          <input type="file" id="importCsvInput" accept=".csv" style="display:none">
+          <span style="font-size:0.75rem;color:var(--text-muted)">Update existing photos from a CSV (matched by filename)</span>
+        </div>
       </div>
 
       <div class="batch-bar" id="batchBar" style="display:none">
-        <span class="count" id="photoCount">0 photos</span>
-        <span id="selectionHint" style="font-size:0.7rem;color:var(--text-muted);font-style:italic" data-tip="Hold Ctrl (Windows) or Cmd (Mac) and click photos to select them. Shift-click to range-select. With a selection, batch actions only run on selected photos.">
-          tip: Ctrl/Cmd-click to multi-select
-        </span>
-        <span id="selectionInfo" style="display:none;font-size:0.8rem;color:var(--primary);font-weight:600">
-          <span id="selectionCount">0</span> selected
-          <button type="button" id="btnClearSelection" data-tip="Clear current selection" style="margin-left:0.5rem;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;text-decoration:underline">clear</button>
-        </span>
-        <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>
-        <button class="btn btn-outline" id="btnEmbedAll" data-tip="Write the generated metadata (title, description, keywords) directly into image files as IPTC/XMP data so stock platforms auto-detect it">Embed Metadata</button>
-        <button class="btn btn-outline" id="btnImportCsv" data-tip="Import a CSV (unified, Adobe, or Shutterstock format) to populate metadata for matching filenames">Import CSV</button>
-        <input type="file" id="importCsvInput" accept=".csv" style="display:none">
-        <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
-        <button class="btn btn-outline btn-sm" id="btnCsvAdobe" data-tip="Download a CSV file formatted for Adobe Stock with filenames, titles, keywords, and category numbers">CSV Adobe</button>
-        <button class="btn btn-outline btn-sm" id="btnCsvShutter" data-tip="Download a CSV file formatted for Shutterstock with filenames, descriptions, keywords, and category names">CSV Shutterstock</button>
-        <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
-        <button class="btn btn-success btn-sm" id="btnUploadAdobe" data-tip="Upload all ready photos and their CSV metadata to Adobe Stock via SFTP">Upload Adobe</button>
-        <button class="btn btn-success btn-sm" id="btnUploadShutter" data-tip="Upload all ready photos and their CSV metadata to Shutterstock via FTPS">Upload Shutterstock</button>
-        <button class="btn btn-success btn-sm" id="btnUploadBoth" data-tip="Upload all ready photos and CSV metadata to both Adobe Stock and Shutterstock at once">Upload Both</button>
-        <div style="border-left:1px solid var(--border);height:24px;margin:0 0.25rem"></div>
-        <button class="btn btn-danger btn-sm" id="btnClearAll" data-tip="Delete all uploaded photos and their metadata from the app">Clear All</button>
+        <div class="batch-bar-header">
+          <span class="count" id="photoCount">0 photos</span>
+          <span id="selectionHint" style="font-size:0.7rem;color:var(--text-muted);font-style:italic" data-tip="Hold Ctrl (Windows) or Cmd (Mac) and click photos to select them. Shift-click to range-select. With a selection, batch actions only run on selected photos.">
+            tip: Ctrl/Cmd-click to multi-select
+          </span>
+          <span id="selectionInfo" style="display:none;font-size:0.8rem;color:var(--primary);font-weight:600">
+            <span id="selectionCount">0</span> selected
+            <button type="button" id="btnClearSelection" data-tip="Clear current selection" style="margin-left:0.5rem;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;text-decoration:underline">clear</button>
+          </span>
+          <span class="batch-spacer"></span>
+          <button class="btn btn-danger btn-sm" id="btnClearAll" data-tip="Delete all uploaded photos and their metadata from the app">Remove All</button>
+        </div>
+        <div class="batch-bar-row">
+          <button class="btn btn-primary" id="btnAnalyzeAll" data-tip="Use GPT-4o Vision AI to automatically generate title, description, keywords, and categories for all pending photos">Analyze All with AI</button>
+          <button class="btn btn-outline" id="btnEmbedAll" data-tip="Write the generated metadata (title, description, keywords) directly into image files as IPTC/XMP data so stock platforms auto-detect it">Embed Metadata</button>
+        </div>
+        <div class="batch-bar-row">
+          <button class="btn btn-outline btn-sm" id="btnCsvAdobe" data-tip="Download a CSV file formatted for Adobe Stock with filenames, titles, keywords, and category numbers">CSV Adobe</button>
+          <button class="btn btn-outline btn-sm" id="btnCsvShutter" data-tip="Download a CSV file formatted for Shutterstock with filenames, descriptions, keywords, and category names">CSV Shutterstock</button>
+          <div class="batch-divider"></div>
+          <button class="btn btn-success btn-sm" id="btnUploadAdobe" data-tip="Upload all ready photos and their CSV metadata to Adobe Stock via SFTP">Upload Adobe</button>
+          <button class="btn btn-success btn-sm" id="btnUploadShutter" data-tip="Upload all ready photos and their CSV metadata to Shutterstock via FTPS">Upload Shutterstock</button>
+          <button class="btn btn-success btn-sm" id="btnUploadBoth" data-tip="Upload all ready photos and CSV metadata to both Adobe Stock and Shutterstock at once">Upload Both</button>
+        </div>
       </div>
 
       <div id="progressArea" style="display:none;margin-bottom:1rem">
@@ -222,6 +229,6 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>
