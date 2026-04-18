@@ -34,6 +34,23 @@ def _auto_embed(item) -> None:
         logger.exception("Auto-embed failed for %s", item.id)
 
 
+def _is_metadata_complete(metadata) -> bool:
+    """A photo is 'ready' only when all upload-critical fields are present."""
+    return bool(
+        (metadata.title or "").strip()
+        and (metadata.description or "").strip()
+        and metadata.keywords
+        and metadata.adobe_category
+        and (metadata.shutterstock_category_1 or "").strip()
+    )
+
+
+def _refresh_status(item) -> None:
+    """Promote PENDING -> READY only when metadata is complete."""
+    if item.status == ProcessingStatus.PENDING and _is_metadata_complete(item.metadata):
+        item.status = ProcessingStatus.READY
+
+
 @router.post("/analyze/{photo_id}")
 async def analyze_single(
     photo_id: str,
@@ -54,7 +71,11 @@ async def analyze_single(
             item.filepath, settings.openai_api_key, context
         )
         item.metadata = metadata
-        item.status = ProcessingStatus.READY
+        item.status = (
+            ProcessingStatus.READY
+            if _is_metadata_complete(metadata)
+            else ProcessingStatus.PENDING
+        )
         _auto_embed(item)
         return APIResponse(
             success=True,
@@ -105,9 +126,13 @@ async def analyze_batch(
                 item.filepath, settings.openai_api_key, context
             )
             item.metadata = metadata
-            item.status = ProcessingStatus.READY
+            if _is_metadata_complete(metadata):
+                item.status = ProcessingStatus.READY
+                results.append({"id": pid, "status": "ready"})
+            else:
+                item.status = ProcessingStatus.PENDING
+                results.append({"id": pid, "status": "incomplete"})
             _auto_embed(item)
-            results.append({"id": pid, "status": "ready"})
         except Exception as e:
             item.status = ProcessingStatus.ERROR
             item.error_message = str(e)
@@ -115,10 +140,16 @@ async def analyze_batch(
             logger.exception("Batch analysis failed for %s", pid)
 
     ready = sum(1 for r in results if r["status"] == "ready")
+    incomplete = sum(1 for r in results if r["status"] == "incomplete")
     errors = sum(1 for r in results if r["status"] == "error")
+    parts = [f"{ready} ready"]
+    if incomplete:
+        parts.append(f"{incomplete} incomplete")
+    if errors:
+        parts.append(f"{errors} error(s)")
     return APIResponse(
         success=True,
-        message=f"Analyzed {ready} photo(s), {errors} error(s)",
+        message="Analyzed: " + ", ".join(parts),
         data=results,
     )
 
@@ -136,9 +167,7 @@ async def update_metadata(
     for key, value in update_data.items():
         setattr(item.metadata, key, value)
 
-    if item.status == ProcessingStatus.PENDING:
-        item.status = ProcessingStatus.READY
-
+    _refresh_status(item)
     _auto_embed(item)
 
     return APIResponse(
@@ -291,8 +320,7 @@ async def import_csv(file: UploadFile = File(...)) -> APIResponse:
             val = row.get(headers["editorial"]) or ""
             m.editorial = _parse_bool(val)
 
-        if item.status == ProcessingStatus.PENDING:
-            item.status = ProcessingStatus.READY
+        _refresh_status(item)
 
         updated += 1
 
