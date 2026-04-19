@@ -15,11 +15,15 @@ ADOBE_SFTP_PORT = 22
 
 
 async def upload_to_adobe(
-    filepaths: list[str],
+    photo_uploads: list[tuple[str, str]],
     csv_path: str | None,
     credentials: PlatformCredentials,
 ) -> AsyncIterator[UploadProgress]:
     """Upload photos and CSV to Adobe Stock via SFTP.
+
+    ``photo_uploads`` is a list of ``(local_filepath, remote_filename)`` pairs
+    so the file shows up on Adobe Stock with the photographer's original name
+    instead of our internal UUID-based name.
 
     Credentials come from the Adobe Stock Contributor portal:
     go to Upload > SFTP > Generate Password.
@@ -38,12 +42,12 @@ async def upload_to_adobe(
         if sftp is None:
             raise ConnectionError("Failed to open SFTP session")
 
-        all_files = list(filepaths)
+        items: list[tuple[str, str]] = list(photo_uploads)
         if csv_path:
-            all_files.append(csv_path)
+            items.append((csv_path, Path(csv_path).name))
 
-        for filepath in all_files:
-            filename = Path(filepath).name
+        for filepath, remote_name in items:
+            filename = remote_name
             try:
                 yield UploadProgress(
                     photo_id=filename,

@@ -94,3 +94,35 @@ def read_embedded_metadata(filepath: str) -> dict:
     except Exception:
         logger.exception("Failed to read metadata from %s", filepath)
         return {}
+
+
+def extract_embedded_metadata(filepath: str) -> PhotoMetadata | None:
+    """Read embedded IPTC/XMP fields and return a populated ``PhotoMetadata``,
+    or ``None`` if no useful fields were found.
+
+    Used at upload time to pre-fill metadata for files that already carry
+    embedded IPTC/XMP (e.g. previously processed exports), so the user does
+    not have to re-run AI analysis.
+    """
+    raw = read_embedded_metadata(filepath)
+    if not raw:
+        return None
+
+    title = (raw.get("Headline") or raw.get("Title") or "").strip()
+    description = (raw.get("Caption-Abstract") or raw.get("Description") or "").strip()
+    raw_keywords = raw.get("Keywords") or raw.get("Subject") or []
+    if isinstance(raw_keywords, str):
+        keywords = [k.strip() for k in raw_keywords.split(",") if k.strip()]
+    elif isinstance(raw_keywords, list):
+        keywords = [str(k).strip() for k in raw_keywords if str(k).strip()]
+    else:
+        keywords = []
+
+    if not (title or description or keywords):
+        return None
+
+    return PhotoMetadata(
+        title=title[:200],
+        description=description[:2048],
+        keywords=keywords,
+    )

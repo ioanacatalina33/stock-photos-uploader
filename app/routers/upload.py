@@ -13,10 +13,11 @@ from app.models.schemas import (
     ProcessingStatus,
     UploadRequest,
 )
-from app.routers.photos import photo_store
+from app.routers.photos import photo_store, _persist_store
 from app.services.csv_generator import (
     generate_adobe_csv,
     generate_shutterstock_csv,
+    resolve_upload_names,
     save_csv,
 )
 from app.services.adobe_uploader import upload_to_adobe, test_adobe_connection
@@ -30,16 +31,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 
 
+_ELIGIBLE_STATUSES = {ProcessingStatus.READY, ProcessingStatus.UPLOADED}
+
+
 def _get_ready_photos(photo_ids: list[str] | None = None):
+    """Return photos eligible for downstream actions (CSV/embed/upload).
+
+    Photos already uploaded to one platform are still eligible for the other
+    platform's upload, for re-export to CSV, and for re-embedding metadata.
+    """
     if photo_ids:
         return [
             photo_store[pid]
             for pid in photo_ids
             if pid in photo_store
-            and photo_store[pid].status == ProcessingStatus.READY
+            and photo_store[pid].status in _ELIGIBLE_STATUSES
         ]
     return [
-        p for p in photo_store.values() if p.status == ProcessingStatus.READY
+        p for p in photo_store.values() if p.status in _ELIGIBLE_STATUSES
     ]
 
 
@@ -55,11 +64,11 @@ async def download_adobe_csv(ids: str | None = None):
     """Download Adobe Stock CSV. Optional ?ids=a,b,c filters to selected ready photos."""
     photos = _get_ready_photos(_parse_ids_param(ids))
     if not photos:
-        return APIResponse(success=False, message="No ready photos")
+        return APIResponse(success=False, message="No ready photos to export to Adobe CSV")
     content = generate_adobe_csv(photos)
     return StreamingResponse(
-        iter([content]),
-        media_type="text/csv",
+        iter([content.encode("utf-8-sig")]),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename=adobe_stock.csv"},
     )
 
@@ -69,11 +78,14 @@ async def download_shutterstock_csv(ids: str | None = None):
     """Download Shutterstock CSV. Optional ?ids=a,b,c filters to selected ready photos."""
     photos = _get_ready_photos(_parse_ids_param(ids))
     if not photos:
-        return APIResponse(success=False, message="No ready photos")
+        return APIResponse(
+            success=False,
+            message="No ready photos to export to Shutterstock CSV",
+        )
     content = generate_shutterstock_csv(photos)
     return StreamingResponse(
-        iter([content]),
-        media_type="text/csv",
+        iter([content.encode("utf-8-sig")]),
+        media_type="text/csv; charset=utf-8",
         headers={
             "Content-Disposition": "attachment; filename=shutterstock.csv"
         },
@@ -97,18 +109,22 @@ async def upload_adobe(request: UploadRequest) -> APIResponse:
     csv_path = Path(tempfile.mktemp(suffix=".csv"))
     save_csv(csv_content, str(csv_path))
 
-    filepaths = [p.filepath for p in photos]
+    name_map = resolve_upload_names(photos)
+    photo_uploads = [(p.filepath, name_map[p.id]) for p in photos]
+    target_to_id = {name_map[p.id]: p.id for p in photos}
+
     results = []
     async for progress in upload_to_adobe(
-        filepaths, str(csv_path), settings.adobe_stock
+        photo_uploads, str(csv_path), settings.adobe_stock
     ):
         results.append(progress.model_dump())
         if progress.status == "uploaded":
-            for p in photos:
-                if p.filename == progress.filename:
-                    p.status = ProcessingStatus.UPLOADED
+            pid = target_to_id.get(progress.filename)
+            if pid and pid in photo_store:
+                photo_store[pid].status = ProcessingStatus.UPLOADED
 
     csv_path.unlink(missing_ok=True)
+    _persist_store()
 
     errors = [r for r in results if r["status"] == "error"]
     if errors:
@@ -137,18 +153,22 @@ async def upload_shutterstock(request: UploadRequest) -> APIResponse:
     csv_path = Path(tempfile.mktemp(suffix=".csv"))
     save_csv(csv_content, str(csv_path))
 
-    filepaths = [p.filepath for p in photos]
+    name_map = resolve_upload_names(photos)
+    photo_uploads = [(p.filepath, name_map[p.id]) for p in photos]
+    target_to_id = {name_map[p.id]: p.id for p in photos}
+
     results = []
     async for progress in upload_to_shutterstock(
-        filepaths, str(csv_path), settings.shutterstock
+        photo_uploads, str(csv_path), settings.shutterstock
     ):
         results.append(progress.model_dump())
         if progress.status == "uploaded":
-            for p in photos:
-                if p.filename == progress.filename:
-                    p.status = ProcessingStatus.UPLOADED
+            pid = target_to_id.get(progress.filename)
+            if pid and pid in photo_store:
+                photo_store[pid].status = ProcessingStatus.UPLOADED
 
     csv_path.unlink(missing_ok=True)
+    _persist_store()
 
     errors = [r for r in results if r["status"] == "error"]
     if errors:
@@ -168,7 +188,8 @@ async def upload_both(request: UploadRequest) -> APIResponse:
     if not photos:
         return APIResponse(success=False, message="No ready photos to upload")
 
-    filepaths = [p.filepath for p in photos]
+    name_map = resolve_upload_names(photos)
+    photo_uploads = [(p.filepath, name_map[p.id]) for p in photos]
     results = {"adobe_stock": [], "shutterstock": []}
 
     if settings.adobe_stock:
@@ -176,7 +197,7 @@ async def upload_both(request: UploadRequest) -> APIResponse:
         csv_path = Path(tempfile.mktemp(suffix=".csv"))
         save_csv(csv_content, str(csv_path))
         async for progress in upload_to_adobe(
-            filepaths, str(csv_path), settings.adobe_stock
+            photo_uploads, str(csv_path), settings.adobe_stock
         ):
             results["adobe_stock"].append(progress.model_dump())
         csv_path.unlink(missing_ok=True)
@@ -188,7 +209,7 @@ async def upload_both(request: UploadRequest) -> APIResponse:
         csv_path = Path(tempfile.mktemp(suffix=".csv"))
         save_csv(csv_content, str(csv_path))
         async for progress in upload_to_shutterstock(
-            filepaths, str(csv_path), settings.shutterstock
+            photo_uploads, str(csv_path), settings.shutterstock
         ):
             results["shutterstock"].append(progress.model_dump())
         csv_path.unlink(missing_ok=True)
@@ -197,6 +218,7 @@ async def upload_both(request: UploadRequest) -> APIResponse:
 
     for p in photos:
         p.status = ProcessingStatus.UPLOADED
+    _persist_store()
 
     return APIResponse(success=True, message="Upload to both complete", data=results)
 

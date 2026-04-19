@@ -4,6 +4,7 @@ let selectedPhotoId = null;
 let detailDirty = false;
 let detailSnapshot = null;
 let selectedIds = new Set();
+let selectionAnchorId = null;
 
 const ADOBE_CATS = {
   1:'Animals',2:'Buildings and Architecture',3:'Business',4:'Drinks',
@@ -24,6 +25,9 @@ const SS_CATS = [
 
 // ─── Init ───
 document.addEventListener('DOMContentLoaded', () => {
+  initEscHandler();
+  initStopButton();
+  initConfirmDialog();
   initTabs();
   initDropZone();
   initBatchActions();
@@ -34,6 +38,50 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPhotos();
   loadSettings();
 });
+
+function initEscHandler() {
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (confirmState) {
+        e.preventDefault();
+        closeConfirm(false);
+        return;
+      }
+      const overlay = document.getElementById('detailOverlay');
+      const modalOpen = overlay && overlay.classList.contains('open');
+      if (modalOpen) {
+        e.preventDefault();
+        closeDetail();
+      } else if (selectedIds.size > 0) {
+        e.preventDefault();
+        clearSelection();
+      }
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+      if (isTypingTarget(e.target)) return;
+      const overlay = document.getElementById('detailOverlay');
+      if (overlay && overlay.classList.contains('open')) return;
+      if (!photos.length) return;
+      e.preventDefault();
+      selectAllPhotos();
+    }
+  });
+}
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (el.isContentEditable) return true;
+  return false;
+}
+
+function selectAllPhotos() {
+  selectedIds = new Set(photos.map(p => p.id));
+  selectionAnchorId = photos[0] ? photos[0].id : null;
+  renderGrid();
+}
 
 // ─── Tooltips (fixed-position, never clipped by overflow containers) ───
 function initTooltips() {
@@ -116,22 +164,20 @@ function initBatchSettings() {
     });
   });
 
-  document.getElementById('setAllEditorial').addEventListener('change', setAllEditorial);
+  const setAllCb = document.getElementById('setAllEditorial');
+  if (setAllCb) setAllCb.addEventListener('change', setAllEditorial);
 }
 
 async function setAllEditorial(event) {
   const cb = event.target;
   cb.indeterminate = false;
   const checked = cb.checked;
-
   const targets = photos.filter(p => p.metadata.editorial !== checked);
   if (!targets.length) {
     renderGrid();
     return;
   }
-
   cb.disabled = true;
-
   const results = await Promise.all(targets.map(p =>
     api(`/api/metadata/${p.id}`, {
       method: 'PUT',
@@ -139,16 +185,23 @@ async function setAllEditorial(event) {
       body: JSON.stringify({ editorial: checked })
     }).then(res => ({ p, res }))
   ));
-
   for (const { p, res } of results) {
     if (res && res.success && res.data) {
       const idx = photos.findIndex(x => x.id === p.id);
       if (idx >= 0) photos[idx] = res.data;
     }
   }
-
   cb.disabled = false;
   renderGrid();
+}
+
+function syncSetAllEditorialCheckbox() {
+  const cb = document.getElementById('setAllEditorial');
+  if (!cb || !photos.length) return;
+  const allEditorial = photos.every(p => p.metadata.editorial);
+  const noneEditorial = photos.every(p => !p.metadata.editorial);
+  cb.checked = allEditorial;
+  cb.indeterminate = !allEditorial && !noneEditorial;
 }
 
 function getBatchContext() {
@@ -203,12 +256,18 @@ async function uploadFiles(fileList) {
   for (const f of fileList) fd.append('files', f);
 
   toast('Uploading ' + fileList.length + ' file(s)...', 'info');
-  const res = await api('/api/photos/upload', { method: 'POST', body: fd });
-  if (res.success) {
-    toast(res.message, 'success');
-    loadPhotos();
-  } else {
-    toast(res.message || 'Upload failed', 'error');
+  startAction(`Uploading ${fileList.length} file(s)`);
+  try {
+    const res = await api('/api/photos/upload', { method: 'POST', body: fd, signal: actionSignal() });
+    if (res.aborted) return;
+    if (res.success) {
+      toast(res.message, 'success');
+      loadPhotos();
+    } else {
+      toast(res.message || 'Upload failed', 'error');
+    }
+  } finally {
+    endAction();
   }
 }
 
@@ -241,19 +300,18 @@ function renderGrid() {
     const classes = ['photo-card'];
     if (selectedPhotoId === p.id) classes.push('selected');
     if (selectedIds.has(p.id)) classes.push('multi-selected');
+    const isSelected = selectedIds.has(p.id);
     return `
     <div class="${classes.join(' ')}"
          data-id="${p.id}" onclick="onCardClick(event, '${p.id}')">
       <img src="${p.thumbnail_url}" alt="${p.original_filename}" loading="lazy">
       <span class="status-badge status-${p.status}">${p.status}</span>
-      <span class="card-select-mark">&#10003;</span>
       <button class="card-remove" data-tip="Remove this photo"
               onclick="event.stopPropagation(); removePhoto('${p.id}')">&times;</button>
-      <label class="card-editorial" data-tip="Mark this photo as editorial"
-             onclick="event.stopPropagation()">
-        <input type="checkbox" ${p.metadata.editorial ? 'checked' : ''}
-               onchange="toggleCardEditorial('${p.id}', this.checked)">
-        Editorial
+      <label class="card-select" data-tip="Select this photo (Shift-click to range-select)"
+             onclick="onSelectCheckboxClick(event, '${p.id}')">
+        <input type="checkbox" ${isSelected ? 'checked' : ''}
+               onclick="onSelectCheckboxClick(event, '${p.id}')">
       </label>
       <div class="info">
         <div class="name" title="${p.original_filename}">${p.original_filename}</div>
@@ -262,8 +320,18 @@ function renderGrid() {
     </div>`;
   }).join('');
 
-  syncSetAllEditorialCheckbox();
   updateSelectionUI();
+  syncSetAllEditorialCheckbox();
+}
+
+function onSelectCheckboxClick(event, id) {
+  event.stopPropagation();
+  event.preventDefault();
+  if (event.shiftKey && selectedIds.size > 0) {
+    extendSelectionTo(id);
+  } else {
+    toggleSelection(id);
+  }
 }
 
 function onCardClick(event, id) {
@@ -272,17 +340,23 @@ function onCardClick(event, id) {
     toggleSelection(id);
     return;
   }
-  if (event.shiftKey && selectedIds.size > 0) {
+  if (event.shiftKey) {
     event.preventDefault();
-    extendSelectionTo(id);
+    if (selectedIds.size > 0) extendSelectionTo(id);
+    else toggleSelection(id);
     return;
   }
   openDetail(id);
 }
 
 function toggleSelection(id) {
-  if (selectedIds.has(id)) selectedIds.delete(id);
-  else selectedIds.add(id);
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+    if (selectionAnchorId === id) selectionAnchorId = null;
+  } else {
+    selectedIds.add(id);
+    selectionAnchorId = id;
+  }
   renderGrid();
 }
 
@@ -290,13 +364,16 @@ function extendSelectionTo(id) {
   const ids = photos.map(p => p.id);
   const targetIdx = ids.indexOf(id);
   if (targetIdx < 0) return;
-  let lastIdx = -1;
-  for (let i = ids.length - 1; i >= 0; i--) {
-    if (selectedIds.has(ids[i])) { lastIdx = i; break; }
+  let anchorIdx = selectionAnchorId ? ids.indexOf(selectionAnchorId) : -1;
+  if (anchorIdx < 0) {
+    for (let i = ids.length - 1; i >= 0; i--) {
+      if (selectedIds.has(ids[i])) { anchorIdx = i; break; }
+    }
   }
-  if (lastIdx < 0) lastIdx = targetIdx;
-  const [from, to] = lastIdx <= targetIdx ? [lastIdx, targetIdx] : [targetIdx, lastIdx];
+  if (anchorIdx < 0) anchorIdx = targetIdx;
+  const [from, to] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
   for (let i = from; i <= to; i++) selectedIds.add(ids[i]);
+  if (!selectionAnchorId) selectionAnchorId = ids[anchorIdx];
   renderGrid();
 }
 
@@ -305,11 +382,13 @@ function pruneSelection() {
   for (const id of Array.from(selectedIds)) {
     if (!valid.has(id)) selectedIds.delete(id);
   }
+  if (selectionAnchorId && !valid.has(selectionAnchorId)) selectionAnchorId = null;
 }
 
 function clearSelection() {
   if (!selectedIds.size) return;
   selectedIds.clear();
+  selectionAnchorId = null;
   renderGrid();
 }
 
@@ -321,6 +400,14 @@ function getSelectedPhotos(filterFn) {
 function getActionTargets(filterFn) {
   if (selectedIds.size > 0) return getSelectedPhotos(filterFn);
   return filterFn ? photos.filter(filterFn) : photos.slice();
+}
+
+// A photo is actionable for CSV / embed / upload as long as its metadata is
+// complete. That includes photos already uploaded to one platform — they're
+// still valid targets for re-export, embedding, or upload to the other
+// platform.
+function isActionable(p) {
+  return p.status === 'ready' || p.status === 'uploaded';
 }
 
 function updateSelectionUI() {
@@ -358,30 +445,6 @@ function updateSelectionUI() {
   }
 }
 
-async function toggleCardEditorial(id, checked) {
-  const res = await api(`/api/metadata/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ editorial: checked })
-  });
-  if (res.success && res.data) {
-    const idx = photos.findIndex(x => x.id === id);
-    if (idx >= 0) photos[idx] = res.data;
-    syncSetAllEditorialCheckbox();
-  } else {
-    toast(res.message || 'Failed to update', 'error');
-  }
-}
-
-function syncSetAllEditorialCheckbox() {
-  const cb = document.getElementById('setAllEditorial');
-  if (!cb || !photos.length) return;
-  const allEditorial = photos.every(p => p.metadata.editorial);
-  const noneEditorial = photos.every(p => !p.metadata.editorial);
-  cb.checked = allEditorial;
-  cb.indeterminate = !allEditorial && !noneEditorial;
-}
-
 // ─── Batch Actions ───
 function initBatchActions() {
   document.getElementById('btnAnalyzeAll').addEventListener('click', analyzeAll);
@@ -405,60 +468,113 @@ async function analyzeAll() {
   }
 
   showProgress('Analyzing with AI...', 0, pending.length);
-  const btn = document.getElementById('btnAnalyzeAll');
-  btn.disabled = true;
+  startAction(`Analyzing ${pending.length} photo(s)`, { button: 'btnAnalyzeAll' });
 
   const context = getBatchContext();
   let done = 0;
-  for (const p of pending) {
-    const res = await api(`/api/metadata/analyze/${p.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(context)
-    });
-    done++;
-    updateProgress(done, pending.length);
-    if (res.success && res.data) {
-      const idx = photos.findIndex(x => x.id === p.id);
-      if (idx >= 0) photos[idx] = res.data;
+  let stopped = false;
+  try {
+    for (const p of pending) {
+      if (isCancelled()) { stopped = true; break; }
+      const res = await api(`/api/metadata/analyze/${p.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(context),
+        signal: actionSignal(),
+      });
+      if (res.aborted) { stopped = true; break; }
+      done++;
+      updateProgress(done, pending.length);
+      if (res.success && res.data) {
+        const idx = photos.findIndex(x => x.id === p.id);
+        if (idx >= 0) photos[idx] = res.data;
+      }
+      renderGrid();
     }
-    renderGrid();
+  } finally {
+    hideProgress();
+    endAction();
   }
 
-  hideProgress();
-  btn.disabled = false;
-  toast('Analysis complete', 'success');
+  if (!stopped) toast('Analysis complete', 'success');
   loadPhotos();
 }
 
 async function embedAll() {
-  const targets = getActionTargets(p => p.status === 'ready');
+  const targets = getActionTargets(isActionable);
   if (!targets.length) {
     toast(selectedIds.size ? 'No selected photos are ready to embed' : 'No ready photos to embed', 'info');
     return;
   }
-  const btn = document.getElementById('btnEmbedAll');
-  const origText = btn.textContent;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Embedding...';
-  const body = selectedIds.size > 0 ? { photo_ids: targets.map(p => p.id) } : {};
-  const res = await api('/api/metadata/embed-batch', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  btn.disabled = false;
-  btn.textContent = origText;
-  toast(res.message || 'Done', res.success ? 'success' : 'error');
+  startAction(`Embedding ${targets.length} photo(s)`, { button: 'btnEmbedAll' });
+  try {
+    const body = selectedIds.size > 0 ? { photo_ids: targets.map(p => p.id) } : {};
+    const res = await api('/api/metadata/embed-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: actionSignal(),
+    });
+    if (res.aborted) return;
+    toast(res.message || 'Done', res.success ? 'success' : 'error');
+  } finally {
+    endAction();
+  }
 }
 
-function downloadCSV(platform) {
+async function downloadCSV(platform) {
+  const targets = getActionTargets(isActionable);
+  if (!targets.length) {
+    const label = platform === 'adobe' ? 'Adobe' : 'Shutterstock';
+    toast(
+      selectedIds.size
+        ? `No selected photos are ready to export to ${label} CSV`
+        : `No ready photos to export to ${label} CSV`,
+      'info'
+    );
+    return;
+  }
+
   let url = platform === 'adobe' ? '/api/upload/csv/adobe' : '/api/upload/csv/shutterstock';
   if (selectedIds.size > 0) {
     const ids = Array.from(selectedIds).join(',');
     url += '?ids=' + encodeURIComponent(ids);
   }
-  window.open(url);
+
+  const csvBtnId = platform === 'adobe' ? 'btnCsvAdobe' : 'btnCsvShutter';
+  startAction(`Exporting ${platform === 'adobe' ? 'Adobe' : 'Shutterstock'} CSV`, { button: csvBtnId });
+  try {
+    const resp = await fetch(API + url, { cache: 'no-store', signal: actionSignal() });
+    if (!resp.ok) {
+      let msg = `CSV download failed (${resp.status})`;
+      try {
+        const j = await resp.json();
+        if (j && j.message) msg = j.message;
+      } catch (_) {}
+      toast(msg, 'error');
+      return;
+    }
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const j = await resp.json();
+      toast(j.message || 'CSV export failed', 'error');
+      return;
+    }
+    const blob = await resp.blob();
+    const filename = platform === 'adobe' ? 'adobe_stock.csv' : 'shutterstock.csv';
+    const a = document.createElement('a');
+    const objUrl = URL.createObjectURL(blob);
+    a.href = objUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objUrl), 1000);
+  } catch (e) {
+    if (e.name !== 'AbortError') toast('CSV download failed: ' + e.message, 'error');
+  } finally {
+    endAction();
+  }
 }
 
 async function importCsv(event) {
@@ -471,31 +587,27 @@ async function importCsv(event) {
     return;
   }
 
-  const btn = document.getElementById('btnImportCsv');
-  const origText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Importing...';
+  startAction('Importing CSV', { button: 'btnImportCsv' });
 
   const fd = new FormData();
   fd.append('file', file);
 
   try {
-    const r = await fetch('/api/metadata/import-csv', { method: 'POST', body: fd });
+    const r = await fetch('/api/metadata/import-csv', { method: 'POST', body: fd, signal: actionSignal() });
     const res = await r.json();
     toast(res.message || 'Done', res.success ? 'success' : 'error');
     if (res.success) await loadPhotos();
   } catch (e) {
-    toast('Import failed: ' + e.message, 'error');
+    if (e.name !== 'AbortError') toast('Import failed: ' + e.message, 'error');
   } finally {
-    btn.disabled = false;
-    btn.textContent = origText;
     input.value = '';
+    endAction();
   }
 }
 
 async function uploadPlatform(platform) {
   hideProgress();
-  const ready = getActionTargets(p => p.status === 'ready');
+  const ready = getActionTargets(isActionable);
   if (!ready.length) {
     toast(selectedIds.size ? 'No selected photos are ready to upload' : 'No ready photos to upload', 'info');
     return;
@@ -503,34 +615,45 @@ async function uploadPlatform(platform) {
 
   const ids = ready.map(p => p.id);
   const btnMap = { adobe: 'btnUploadAdobe', shutterstock: 'btnUploadShutter', both: 'btnUploadBoth' };
-  const allBtns = ['btnUploadAdobe', 'btnUploadShutter', 'btnUploadBoth'];
-  const activeBtn = document.getElementById(btnMap[platform]);
-  const origText = activeBtn.textContent;
+  const otherBtns = ['btnUploadAdobe', 'btnUploadShutter', 'btnUploadBoth'].filter(id => id !== btnMap[platform]);
+  otherBtns.forEach(id => { document.getElementById(id).disabled = true; });
 
-  allBtns.forEach(id => { document.getElementById(id).disabled = true; });
-  activeBtn.innerHTML = '<span class="spinner"></span> Uploading...';
+  const platformLabel = platform === 'both' ? 'Adobe + Shutterstock' : platform === 'adobe' ? 'Adobe' : 'Shutterstock';
+  startAction(`Uploading ${ids.length} photo(s) to ${platformLabel}`, {
+    button: btnMap[platform],
+    poll: true,
+    pollInterval: 2500,
+  });
 
   let endpoint = '/api/upload/';
   if (platform === 'adobe') endpoint += 'adobe';
   else if (platform === 'shutterstock') endpoint += 'shutterstock';
   else endpoint += 'both';
 
-  const res = await api(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ photo_ids: ids, platform: platform === 'both' ? 'both' : platform === 'adobe' ? 'adobe_stock' : 'shutterstock' })
-  });
-
-  allBtns.forEach(id => { document.getElementById(id).disabled = false; });
-  activeBtn.textContent = origText;
-  toast(res.message || 'Upload complete', res.success ? 'success' : 'error');
+  try {
+    const res = await api(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photo_ids: ids, platform: platform === 'both' ? 'both' : platform === 'adobe' ? 'adobe_stock' : 'shutterstock' }),
+      signal: actionSignal(),
+    });
+    if (!res.aborted) toast(res.message || 'Upload complete', res.success ? 'success' : 'error');
+  } finally {
+    otherBtns.forEach(id => { document.getElementById(id).disabled = false; });
+    endAction();
+  }
   loadPhotos();
 }
 
 async function clearAllOrSelected() {
   if (selectedIds.size > 0) {
     const ids = Array.from(selectedIds);
-    if (!confirm(`Remove ${ids.length} selected photo(s)?`)) return;
+    const ok = await confirmDialog({
+      title: 'Remove selected photos',
+      message: `This will permanently delete ${ids.length} selected photo(s) and their metadata. This cannot be undone.`,
+      confirmLabel: `Remove ${ids.length}`,
+    });
+    if (!ok) return;
     let removed = 0;
     let failed = 0;
     await Promise.all(ids.map(async id => {
@@ -548,7 +671,12 @@ async function clearAllOrSelected() {
     return;
   }
 
-  if (!confirm('Remove all photos?')) return;
+  const ok = await confirmDialog({
+    title: 'Remove all photos',
+    message: `This will permanently delete all ${photos.length} photo(s) and their metadata. This cannot be undone.`,
+    confirmLabel: 'Remove all',
+  });
+  if (!ok) return;
   await api('/api/photos/', { method: 'DELETE' });
   photos = [];
   selectedIds.clear();
@@ -559,7 +687,12 @@ async function clearAllOrSelected() {
 async function removePhoto(id) {
   const p = photos.find(x => x.id === id);
   if (!p) return;
-  if (!confirm(`Remove "${p.original_filename}"?`)) return;
+  const ok = await confirmDialog({
+    title: 'Remove photo',
+    message: `This will permanently delete "${p.original_filename}" and its metadata. This cannot be undone.`,
+    confirmLabel: 'Remove',
+  });
+  if (!ok) return;
   const res = await api(`/api/photos/${id}`, { method: 'DELETE' });
   if (res.success) {
     photos = photos.filter(x => x.id !== id);
@@ -645,6 +778,8 @@ function openDetail(id) {
   const p = photos.find(x => x.id === id);
   if (!p) return;
 
+  populateCategorySelects();
+
   document.getElementById('detailImg').src = p.thumbnail_url;
   document.getElementById('detailFilename').textContent = p.original_filename + ` (${p.width}x${p.height})`;
   document.getElementById('detailStatus').textContent = p.status;
@@ -652,7 +787,8 @@ function openDetail(id) {
 
   document.getElementById('detailTitle').value = p.metadata.title || '';
   document.getElementById('detailDesc').value = p.metadata.description || '';
-  document.getElementById('detailAdobeCat').value = p.metadata.adobe_category || '';
+  const adobeVal = p.metadata.adobe_category != null ? String(p.metadata.adobe_category) : '';
+  document.getElementById('detailAdobeCat').value = adobeVal;
   document.getElementById('detailSSCat1').value = p.metadata.shutterstock_category_1 || '';
   document.getElementById('detailSSCat2').value = p.metadata.shutterstock_category_2 || '';
   document.getElementById('detailEditorial').checked = p.metadata.editorial;
@@ -665,8 +801,15 @@ function openDetail(id) {
   renderGrid();
 }
 
-function closeDetail() {
-  if (detailDirty && !confirm('You have unsaved changes. Discard them?')) return;
+async function closeDetail() {
+  if (detailDirty) {
+    const ok = await confirmDialog({
+      title: 'Discard unsaved changes?',
+      message: 'You have unsaved edits in this photo. Discard them and close?',
+      confirmLabel: 'Discard',
+    });
+    if (!ok) return;
+  }
   document.getElementById('detailOverlay').classList.remove('open');
   selectedPhotoId = null;
   detailDirty = false;
@@ -823,6 +966,47 @@ function hideProgress() {
   document.getElementById('progressArea').style.display = 'none';
 }
 
+// ─── Confirm dialog (replaces native confirm) ───
+let confirmState = null;
+
+function confirmDialog({ title = 'Confirm', message = '', confirmLabel = 'Confirm', cancelLabel = 'Cancel', danger = true } = {}) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('confirmOverlay');
+    const titleEl = document.getElementById('confirmTitle');
+    const msgEl = document.getElementById('confirmMessage');
+    const okBtn = document.getElementById('confirmOkBtn');
+    const cancelBtn = document.getElementById('confirmCancelBtn');
+    if (!overlay) { resolve(window.confirm(message)); return; }
+
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    okBtn.textContent = confirmLabel;
+    cancelBtn.textContent = cancelLabel;
+    okBtn.className = 'btn ' + (danger ? 'btn-danger' : 'btn-primary');
+
+    confirmState = { resolve, overlay, okBtn, cancelBtn };
+    overlay.classList.add('open');
+    setTimeout(() => okBtn.focus(), 80);
+  });
+}
+
+function closeConfirm(result) {
+  if (!confirmState) return;
+  const { resolve, overlay } = confirmState;
+  overlay.classList.remove('open');
+  confirmState = null;
+  resolve(result);
+}
+
+function initConfirmDialog() {
+  const okBtn = document.getElementById('confirmOkBtn');
+  const cancelBtn = document.getElementById('confirmCancelBtn');
+  const backdrop = document.getElementById('confirmBackdrop');
+  if (okBtn) okBtn.addEventListener('click', () => closeConfirm(true));
+  if (cancelBtn) cancelBtn.addEventListener('click', () => closeConfirm(false));
+  if (backdrop) backdrop.addEventListener('click', () => closeConfirm(false));
+}
+
 // ─── Toast ───
 function toast(msg, type = 'info') {
   const container = document.getElementById('toastContainer');
@@ -836,9 +1020,132 @@ function toast(msg, type = 'info') {
 // ─── API Helper ───
 async function api(url, opts = {}) {
   try {
-    const resp = await fetch(API + url, opts);
+    const resp = await fetch(API + url, { cache: 'no-store', ...opts });
     return await resp.json();
   } catch (e) {
+    if (e.name === 'AbortError') return { success: false, message: 'Stopped', aborted: true };
     return { success: false, message: e.message };
   }
+}
+
+// ─── Action lifecycle (Stop button) ───
+let currentAction = null;
+
+const MIN_STOP_VISIBLE_MS = 700;
+
+function startAction(label, opts = {}) {
+  if (currentAction) stopAction(false);
+  currentAction = {
+    label,
+    controller: new AbortController(),
+    cancelled: false,
+    startedAt: Date.now(),
+    button: null,
+    pollTimer: null,
+  };
+  showStopButton(label);
+
+  if (opts.button) {
+    const btn = typeof opts.button === 'string' ? document.getElementById(opts.button) : opts.button;
+    if (btn) markButtonRunning(btn);
+  }
+  if (opts.poll) {
+    currentAction.pollTimer = setInterval(() => {
+      if (currentAction && !currentAction.cancelled) loadPhotos();
+    }, opts.pollInterval || 3000);
+  }
+  return currentAction;
+}
+
+function markButtonRunning(btn) {
+  if (!currentAction) return;
+  currentAction.button = btn;
+  currentAction.buttonOrigHTML = btn.innerHTML;
+  currentAction.buttonOrigDisabled = btn.disabled;
+  btn.disabled = true;
+  btn.classList.add('is-running');
+  btn.innerHTML = `<span class="spinner" style="margin-right:0.4rem"></span>${currentAction.buttonOrigHTML}`;
+
+  const stopMark = document.createElement('button');
+  stopMark.type = 'button';
+  stopMark.className = 'btn-stop-mark';
+  stopMark.innerHTML = '<span class="stop-square"></span>';
+  stopMark.setAttribute('aria-label', 'Stop');
+  stopMark.setAttribute('data-tip', 'Stop this action');
+  stopMark.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    stopAction(true);
+  });
+  btn.parentNode.insertBefore(stopMark, btn.nextSibling);
+  currentAction.stopMarkExternal = stopMark;
+}
+
+function clearButtonRunning() {
+  if (!currentAction || !currentAction.button) return;
+  const btn = currentAction.button;
+  btn.classList.remove('is-running');
+  if (currentAction.buttonOrigHTML !== undefined) btn.innerHTML = currentAction.buttonOrigHTML;
+  if (currentAction.buttonOrigDisabled !== undefined) btn.disabled = currentAction.buttonOrigDisabled;
+  if (currentAction.stopMarkExternal) {
+    currentAction.stopMarkExternal.remove();
+    currentAction.stopMarkExternal = null;
+  }
+}
+
+function stopAction(showToastMsg = true) {
+  if (!currentAction) return;
+  const label = currentAction.label;
+  currentAction.cancelled = true;
+  try { currentAction.controller.abort(); } catch (_) {}
+  if (currentAction.pollTimer) clearInterval(currentAction.pollTimer);
+  clearButtonRunning();
+  hideStopButton();
+  if (showToastMsg) toast(`Stopped: ${label}`, 'info');
+  currentAction = null;
+}
+
+function endAction() {
+  if (!currentAction) return;
+  if (currentAction.pollTimer) clearInterval(currentAction.pollTimer);
+  clearButtonRunning();
+  const elapsed = Date.now() - currentAction.startedAt;
+  const remaining = Math.max(0, MIN_STOP_VISIBLE_MS - elapsed);
+  const finishingAction = currentAction;
+  if (remaining === 0) {
+    hideStopButton();
+    currentAction = null;
+  } else {
+    setTimeout(() => {
+      if (currentAction === finishingAction) {
+        hideStopButton();
+        currentAction = null;
+      }
+    }, remaining);
+  }
+}
+
+function isCancelled() {
+  return currentAction ? currentAction.cancelled : false;
+}
+
+function actionSignal() {
+  return currentAction ? currentAction.controller.signal : undefined;
+}
+
+function showStopButton(label) {
+  const btn = document.getElementById('stopActionBtn');
+  if (!btn) return;
+  btn.querySelector('.stop-label').textContent = label;
+  btn.style.display = 'inline-flex';
+}
+
+function hideStopButton() {
+  const btn = document.getElementById('stopActionBtn');
+  if (btn) btn.style.display = 'none';
+}
+
+function initStopButton() {
+  const btn = document.getElementById('stopActionBtn');
+  if (btn) btn.addEventListener('click', () => stopAction(true));
 }

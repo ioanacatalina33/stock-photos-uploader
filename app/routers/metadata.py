@@ -17,7 +17,7 @@ from app.models.schemas import (
     MetadataUpdateRequest,
     ProcessingStatus,
 )
-from app.routers.photos import photo_store
+from app.routers.photos import photo_store, _persist_store
 from app.services.ai_analyzer import analyze_photo
 from app.services.metadata_writer import write_metadata
 
@@ -66,6 +66,7 @@ async def analyze_single(
             if _is_metadata_ready(metadata)
             else ProcessingStatus.PENDING
         )
+        _persist_store()
         return APIResponse(
             success=True,
             message="Analysis complete",
@@ -127,6 +128,7 @@ async def analyze_batch(
             results.append({"id": pid, "status": "error", "error": str(e)})
             logger.exception("Batch analysis failed for %s", pid)
 
+    _persist_store()
     ready = sum(1 for r in results if r["status"] == "ready")
     incomplete = sum(1 for r in results if r["status"] == "incomplete")
     errors = sum(1 for r in results if r["status"] == "error")
@@ -156,6 +158,7 @@ async def update_metadata(
         setattr(item.metadata, key, value)
 
     _refresh_status(item)
+    _persist_store()
 
     return APIResponse(
         success=True,
@@ -311,6 +314,9 @@ async def import_csv(file: UploadFile = File(...)) -> APIResponse:
 
         updated += 1
 
+    if updated:
+        _persist_store()
+
     msg = f"Updated {updated} of {total} row(s)"
     if not_found:
         msg += f"; {len(not_found)} filename(s) not found"
@@ -331,18 +337,19 @@ async def embed_batch(
     If photo_ids is provided, only embed those (filtered to ready ones);
     otherwise embed all ready photos.
     """
+    eligible = {ProcessingStatus.READY, ProcessingStatus.UPLOADED}
     if photo_ids:
         targets = [
             photo_store[pid]
             for pid in photo_ids
             if pid in photo_store
-            and photo_store[pid].status == ProcessingStatus.READY
+            and photo_store[pid].status in eligible
         ]
     else:
         targets = [
             item
             for item in photo_store.values()
-            if item.status == ProcessingStatus.READY
+            if item.status in eligible
         ]
 
     embedded = 0

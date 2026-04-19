@@ -58,11 +58,15 @@ def _connect_ftps(credentials: PlatformCredentials) -> ftplib.FTP_TLS:
 
 
 async def upload_to_shutterstock(
-    filepaths: list[str],
+    photo_uploads: list[tuple[str, str]],
     csv_path: str | None,
     credentials: PlatformCredentials,
 ) -> AsyncIterator[UploadProgress]:
     """Upload photos and CSV to Shutterstock via FTPS.
+
+    ``photo_uploads`` is a list of ``(local_filepath, remote_filename)`` pairs
+    so the file lands on Shutterstock with the photographer's original name
+    (matching the Filename column of the CSV).
 
     Credentials come from the Shutterstock Contributor portal FTPS settings.
     """
@@ -70,12 +74,12 @@ async def upload_to_shutterstock(
     try:
         ftp = _connect_ftps(credentials)
 
-        all_files = list(filepaths)
+        items: list[tuple[str, str]] = list(photo_uploads)
         if csv_path:
-            all_files.append(csv_path)
+            items.append((csv_path, Path(csv_path).name))
 
-        for filepath in all_files:
-            filename = Path(filepath).name
+        for filepath, remote_name in items:
+            filename = remote_name
             try:
                 yield UploadProgress(
                     photo_id=filename,

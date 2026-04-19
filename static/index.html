@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stock Photos Uploader</title>
-  <link rel="stylesheet" href="/static/style.css?v=12">
+  <link rel="stylesheet" href="/static/style.css?v=30">
 </head>
 <body>
   <header>
@@ -78,8 +78,8 @@
       <div class="batch-bar" id="batchBar" style="display:none">
         <div class="batch-bar-header">
           <span class="count" id="photoCount">0 photos</span>
-          <span id="selectionHint" style="font-size:0.7rem;color:var(--text-muted);font-style:italic" data-tip="Hold Ctrl (Windows) or Cmd (Mac) and click photos to select them. Shift-click to range-select. With a selection, batch actions only run on selected photos.">
-            tip: Ctrl/Cmd-click to multi-select
+          <span id="selectionHint" style="font-size:0.7rem;color:var(--text-muted);font-style:italic" data-tip="Click a photo's checkbox (top-left) to select it. Shift-click another to range-select. Ctrl/Cmd+A selects all. Esc clears the selection.">
+            tip: click checkbox, Shift-click for range, Ctrl/Cmd+A for all
           </span>
           <span id="selectionInfo" style="display:none;font-size:0.8rem;color:var(--primary);font-weight:600">
             <span id="selectionCount">0</span> selected
@@ -181,8 +181,8 @@
       </div>
 
       <div class="field-group">
-        <label>Title <span style="font-weight:normal;color:var(--text-muted)">(max 150 chars)</span></label>
-        <input type="text" id="detailTitle" maxlength="150">
+        <label>Title <span style="font-weight:normal;color:var(--text-muted)">(target 100-200 chars)</span></label>
+        <textarea id="detailTitle" maxlength="200" rows="3" style="min-height:64px"></textarea>
       </div>
 
       <div class="field-group">
@@ -229,6 +229,24 @@
 
   <div class="toast-container" id="toastContainer"></div>
 
-  <script src="/static/app.js?v=12"></script>
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-backdrop" id="confirmBackdrop"></div>
+    <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <h3 id="confirmTitle" class="confirm-title">Confirm</h3>
+      <p id="confirmMessage" class="confirm-message"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-outline" id="confirmCancelBtn">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmOkBtn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="stopActionBtn" class="stop-action-btn" type="button" style="display:none" data-tip="Stop the current action. In-flight server work may still complete; remaining steps will be skipped.">
+    <span class="stop-square"></span>
+    <span>Stop</span>
+    <span class="stop-label" style="opacity:0.85;font-weight:400"></span>
+  </button>
+
+  <script src="/static/app.js?v=30"></script>
 </body>
 </html>
